@@ -491,14 +491,46 @@ def info():
 def assign(
     model: str = typer.Argument(..., help="Model name to configure"),
     devices: Optional[str] = typer.Option(None, "--devices", "-d", help="GPU devices (comma-separated, e.g., '0,1')"),
-    gpu_memory: Optional[float] = typer.Option(None, "--gpu-memory", "-m", help="GPU memory utilization (0.1-1.0)"),
+    gpu_memory_utilization: Optional[float] = typer.Option(None, "--gpu-memory-utilization", "--gpu-memory", "-m", help="GPU memory utilization (0.1-1.0)"),
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Fixed port to use"),
+    tensor_parallel_size: Optional[int] = typer.Option(None, "--tensor-parallel-size", "-t", help="Tensor parallel size"),
+    max_model_len: Optional[int] = typer.Option(None, "--max-model-len", "-l", help="Maximum model context length"),
+    trust_remote_code: Optional[bool] = typer.Option(None, "--trust-remote-code", help="Trust remote code"),
+    dtype: Optional[str] = typer.Option(None, "--dtype", help="Data type (auto/float16/bfloat16/float32)"),
+    extra_args: Optional[list[str]] = typer.Option(None, "--extra-args", "--extra", "-e", help="Extra vLLM arguments (key=value format, can be used multiple times)"),
+    clear_extra_args: bool = typer.Option(False, "--clear-extra-args", "--clear-extra", help="Clear all extra arguments"),
     restart: bool = typer.Option(False, "--restart", "-r", help="Restart instance if running"),
+    show: bool = typer.Option(False, "--show", "-s", help="Show current configuration without modifying"),
 ):
     """Configure model settings.
 
     This command updates the model configuration in ~/.vllama/models.yaml.
     Use --restart to apply changes immediately if the model is running.
+
+    Examples:
+        # Set GPU devices and memory
+        vllama assign MODEL --devices 0,1 --gpu-memory-utilization 0.85
+
+        # Short form also works
+        vllama assign MODEL -d 0,1 -m 0.85
+
+        # Set context length and data type
+        vllama assign MODEL --max-model-len 32768 --dtype bfloat16
+
+        # Add extra vLLM arguments
+        vllama assign MODEL --extra-args enable-prefix-caching=true --extra-args max-num-seqs=256
+
+        # Short form for extra
+        vllama assign MODEL -e enable-prefix-caching=true -e max-num-seqs=256
+
+        # Clear extra arguments
+        vllama assign MODEL --clear-extra-args
+
+        # Show current configuration
+        vllama assign MODEL --show
+
+        # Update and restart
+        vllama assign MODEL --gpu-memory-utilization 0.9 --restart
     """
     # Load config directly from file (no server needed for this)
     yaml_manager = YAMLConfigManager(VllamaPaths.MODELS_CONFIG_FILE)
@@ -514,32 +546,120 @@ def assign(
 
     # Get existing config or create new one
     model_config = yaml_manager.get_config(model_info.model_id)
+    if model_config is None:
+        model_config = ModelConfig(model_name=model_info.model_id)
+
+    # Show mode
+    if show:
+        console.print(f"[cyan]Configuration for {model_info.model_id}:[/cyan]")
+        console.print()
+
+        table = Table(show_header=False, box=None)
+        table.add_column("Field", style="yellow")
+        table.add_column("Value", style="white")
+
+        table.add_row("port", str(model_config.port) if model_config.port else "auto")
+        table.add_row("gpu_memory_utilization", str(model_config.gpu_memory_utilization))
+        table.add_row("devices", str(model_config.devices) if model_config.devices else "auto")
+        table.add_row("tensor_parallel_size", str(model_config.tensor_parallel_size))
+        table.add_row("max_model_len", str(model_config.max_model_len) if model_config.max_model_len else "auto")
+        table.add_row("trust_remote_code", str(model_config.trust_remote_code))
+        table.add_row("dtype", model_config.dtype)
+
+        if model_config.extra_args:
+            extra_str = "\n".join([f"{k}={v}" for k, v in model_config.extra_args.items()])
+            table.add_row("extra_args", extra_str)
+        else:
+            table.add_row("extra_args", "(none)")
+
+        console.print(table)
+        return
+
+    # Track what was changed
+    changes = []
 
     # Update config
     if devices is not None:
         device_list = [int(d.strip()) for d in devices.split(",")]
         model_config.devices = device_list
-    if gpu_memory is not None:
-        model_config.gpu_memory_utilization = gpu_memory
+        changes.append(f"devices: {device_list}")
+
+    if gpu_memory_utilization is not None:
+        model_config.gpu_memory_utilization = gpu_memory_utilization
+        changes.append(f"gpu_memory_utilization: {gpu_memory_utilization}")
+
     if port is not None:
         model_config.port = port
+        changes.append(f"port: {port}")
+
+    if tensor_parallel_size is not None:
+        model_config.tensor_parallel_size = tensor_parallel_size
+        changes.append(f"tensor_parallel_size: {tensor_parallel_size}")
+
+    if max_model_len is not None:
+        model_config.max_model_len = max_model_len
+        changes.append(f"max_model_len: {max_model_len}")
+
+    if trust_remote_code is not None:
+        model_config.trust_remote_code = trust_remote_code
+        changes.append(f"trust_remote_code: {trust_remote_code}")
+
+    if dtype is not None:
+        model_config.dtype = dtype
+        changes.append(f"dtype: {dtype}")
+
+    # Handle extra_args
+    if clear_extra_args:
+        model_config.extra_args = {}
+        changes.append("extra_args: cleared")
+    elif extra_args:
+        for arg in extra_args:
+            if "=" not in arg:
+                console.print(f"[red]Invalid extra argument format: {arg}[/red]")
+                console.print("Use format: key=value")
+                raise typer.Exit(1)
+
+            key, value = arg.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+
+            # Try to parse as boolean
+            if value.lower() in ("true", "false"):
+                model_config.extra_args[key] = value.lower() == "true"
+            else:
+                model_config.extra_args[key] = value
+
+            changes.append(f"extra_args.{key}: {value}")
+
+    # Check if any changes were made
+    if not changes:
+        console.print("[yellow]No changes specified. Use --show to see current configuration.[/yellow]")
+        console.print()
+        console.print("Available options:")
+        console.print("  --devices, --gpu-memory-utilization (--gpu-memory), --port")
+        console.print("  --tensor-parallel-size, --max-model-len, --trust-remote-code, --dtype")
+        console.print("  --extra-args (--extra, -e) (can be used multiple times)")
+        console.print("  --clear-extra-args (--clear-extra), --show, --restart")
+        return
 
     # Save config (set_config automatically saves to file)
     yaml_manager.set_config(model_info.model_id, model_config)
 
     console.print(f"[green]Updated configuration for {model_info.model_id}[/green]")
-    console.print(f"  Devices: {model_config.devices}")
-    console.print(f"  GPU Memory: {model_config.gpu_memory_utilization}")
-    console.print(f"  Port: {model_config.port}")
+    console.print()
+    for change in changes:
+        console.print(f"  ✓ {change}")
 
     if restart:
         # Check if server is running
         is_running, server_port = check_server_running()
         if not is_running:
+            console.print()
             console.print("[yellow]Server not running, cannot restart instance[/yellow]")
-            console.print("Use --restart to apply changes immediately if the model is running.")
+            console.print("Start the server with: vllama serve")
             return
 
+        console.print()
         console.print("Restarting instance to apply new configuration...")
 
         try:
@@ -575,7 +695,8 @@ def assign(
             console.print(f"[red]Error during restart: {e}[/red]")
             raise typer.Exit(1)
     else:
-        console.print("Use [cyan]--restart[/cyan] to apply changes immediately if instance is running")
+        console.print()
+        console.print("Use [cyan]vllama restart[/cyan] or [cyan]--restart[/cyan] to apply changes immediately")
 
 
 @app.command()

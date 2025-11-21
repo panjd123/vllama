@@ -5,7 +5,7 @@ Fixed paths are defined in vllama.constants.VllamaPaths.
 """
 
 import os
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,10 +18,10 @@ class ModelConfig(BaseModel):
     gpu_memory_utilization: float = Field(default=0.7, ge=0.1, le=1.0)
     devices: Optional[list[int]] = None  # GPU device IDs, None for auto
     tensor_parallel_size: int = 1
-    max_model_len: Optional[int] = 2048
+    max_model_len: Optional[int] = None  # None for auto
     trust_remote_code: bool = False
     dtype: str = "auto"
-    extra_args: dict[str, str | bool] = Field(default_factory=dict)
+    extra_args: dict[str, Union[str, bool]] = Field(default_factory=dict)
 
 
 class VllamaConfig(BaseSettings):

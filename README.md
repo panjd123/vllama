@@ -232,14 +232,54 @@ vllama sleep MODEL [--level {1,2,3}]
 ```
 休眠模型（默认 Level 2）
 
+### vllama list
+```bash
+vllama list
+```
+列出所有已下载的模型
+
+### vllama pull
+```bash
+vllama pull MODEL [--revision BRANCH]
+```
+从 Hugging Face Hub 下载模型
+
 ### vllama assign
 ```bash
-vllama assign MODEL \
-  [--devices DEVICES] \
-  [--gpu-memory RATIO] \
-  [--restart]
+# 配置基本参数（完整名称）
+vllama assign MODEL --devices 0,1 --gpu-memory-utilization 0.85
+
+# 简短别名也支持
+vllama assign MODEL -d 0,1 -m 0.85
+
+# 配置模型参数
+vllama assign MODEL --max-model-len 32768 --dtype bfloat16
+
+# 配置额外参数（完整名称或简短别名）
+vllama assign MODEL --extra-args key=value --extra-args key2=value2
+vllama assign MODEL -e key=value -e key2=value2
+
+# 查看当前配置
+vllama assign MODEL --show
+
+# 应用配置并重启
+vllama assign MODEL --gpu-memory-utilization 0.9 --restart
 ```
-配置模型参数并可选重启
+配置模型的所有参数，参数名称与配置文件字段一致：
+- `--gpu-memory-utilization` (别名: `--gpu-memory`, `-m`)
+- `--devices` (别名: `-d`)
+- `--tensor-parallel-size` (别名: `-t`)
+- `--max-model-len` (别名: `-l`)
+- `--extra-args` (别名: `--extra`, `-e`) - vLLM 额外参数
+- `--clear-extra-args` (别名: `--clear-extra`)
+- `--show` (别名: `-s`) - 查看配置
+- `--restart` (别名: `-r`) - 重启应用
+
+### vllama restart
+```bash
+vllama restart MODEL
+```
+重启模型实例以应用新配置
 
 ## 🔌 API 端点
 
