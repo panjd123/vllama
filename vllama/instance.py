@@ -229,7 +229,7 @@ class VLLMInstanceManager:
             Command list for subprocess
         """
         cmd = [
-            "python", "-m", "vllm.entrypoints.openai.api_server",
+            "python3", "-m", "vllm.entrypoints.openai.api_server",
             "--model", model_info.local_path,
             "--served-model-name", model_info.model_id,  # Register friendly model name
             "--port", str(port),
