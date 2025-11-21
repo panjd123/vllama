@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  vllama:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vllama:latest
+    container_name: vllama-server
+
+    # GPU support - requires nvidia-docker
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # Environment variables for configuration
+    environment:
+      # Vllama server configuration
+      - VLLAMA_HOST=0.0.0.0
+      - VLLAMA_PORT=33258
+      - VLLAMA_VLLM_PORT_START=33300
+      - VLLAMA_VLLM_PORT_END=34300
+      - VLLAMA_UNLOAD_TIMEOUT=1800
+      - VLLAMA_UNLOAD_MODE=2
+
+      # Transformers cache location
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface/hub
+
+      # Optional: Hugging Face token for private models
+      # - HF_TOKEN=${HF_TOKEN}
+
+    # Port mappings
+    ports:
+      # Vllama server port
+      - "33258:33258"
+      # vLLM instance port range
+      - "33300-33350:33300-33350"
+
+    # Volume mounts
+    volumes:
+      # Transformers cache - mount host's huggingface cache directly
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+
+      # Vllama configuration directory
+      - ./vllama_config:/root/.vllama
+
+      # Optional: Mount models.yaml directly
+      # - ./models.yaml:/root/.vllama/models.yaml
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:33258/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Resource limits (optional, adjust based on your hardware)
+    # mem_limit: 32g
+    # shm_size: 16g

@@ -1,0 +1,47 @@
+# Example model configuration file for vllama
+# Location: ~/.vllama/models.yaml
+
+# Chat model example
+Qwen/Qwen3-0.6B:
+  gpu_memory_utilization: 0.9
+  devices: [0]
+  tensor_parallel_size: 1
+  max_model_len: 4096
+  dtype: auto
+  trust_remote_code: false
+
+# Embedding model example
+BAAI/bge-m3:
+  port: 8001
+  gpu_memory_utilization: 0.5
+  devices: [1]
+  tensor_parallel_size: 1
+  dtype: auto
+
+# Reranker model example
+tomaarsen/Qwen3-Reranker-0.6B-seq-cls:
+  port: 8002
+  gpu_memory_utilization: 0.3
+  devices: [1]
+  tensor_parallel_size: 1
+  dtype: auto
+
+# Large model with tensor parallelism (using 2 GPUs)
+# meta-llama/Llama-2-70b-hf:
+#   port: 8010
+#   gpu_memory_utilization: 0.95
+#   devices: [0, 1]
+#   tensor_parallel_size: 2
+#   max_model_len: 4096
+#   dtype: auto
+
+# Model with custom arguments
+# mistralai/Mistral-7B-v0.1:
+#   port: 8020
+#   gpu_memory_utilization: 0.9
+#   devices: [0]
+#   tensor_parallel_size: 1
+#   dtype: bfloat16
+#   extra_args:
+#     enable-prefix-caching: "true"
+#     max-num-seqs: "256"
