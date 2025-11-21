@@ -669,15 +669,18 @@ def assign(
             instance_running = any(inst.get("model_id") == model_info.model_id for inst in instances)
 
             if not instance_running:
-                console.print("[yellow]Instance not running, no restart needed[/yellow]")
-                return
-
-            # Stop instance
-            httpx.post(
-                f"http://localhost:{server_port}/instances/{model_info.model_id}/stop",
-                timeout=60.0
-            )
-            time.sleep(2)
+                console.print("[yellow]Instance not running.[/yellow]")
+            else:
+                # Stop instance
+                response = httpx.post(
+                    f"http://localhost:{server_port}/instances/{model_info.model_id}/stop",
+                    timeout=60.0
+                )
+                if response.status_code == 200:
+                    console.print(f"[green]Stopped {model_info.model_id}[/green]")
+                else:
+                    console.print(f"[red]Failed to stop instance: {response.text}[/red]")
+                    raise typer.Exit(1)
 
             # Start instance
             response = httpx.post(
