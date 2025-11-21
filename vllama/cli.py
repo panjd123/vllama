@@ -285,6 +285,67 @@ def stop(model: str = typer.Argument(..., help="Model name to stop")):
 
 
 @app.command()
+def restart(model: str = typer.Argument(..., help="Model name to restart")):
+    """Restart a model instance to apply configuration changes.
+
+    This command stops the model and starts it again with the latest configuration.
+    Useful after manually editing ~/.vllama/models.yaml.
+
+    Examples:
+        vllama restart Qwen/Qwen3-0.6B
+    """
+    server_port = ensure_server_running()
+
+    console.print(f"Restarting model {model}...")
+
+    try:
+        # First stop the model
+        console.print("  Stopping...")
+        response = httpx.post(
+            f"http://localhost:{server_port}/instances/{model}/stop",
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            console.print("  [green]Stopped[/green]")
+        elif response.status_code == 404:
+            # Model not running, just start it
+            console.print("  [yellow]Model was not running[/yellow]")
+        else:
+            console.print(f"[red]Failed to stop model: {response.text}[/red]")
+            raise typer.Exit(1)
+
+        # Then start the model
+        console.print("  Starting with new configuration...")
+        response = httpx.post(
+            f"http://localhost:{server_port}/instances/{model}/start",
+            timeout=300.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            console.print(f"[green]Successfully restarted {data['model_id']}[/green]")
+            console.print(f"Port: {data['port']}")
+            console.print(f"PID: {data['pid']}")
+            console.print(f"Logs: {VllamaPaths.LOGS_DIR}/{data['model_id'].replace('/', '_')}_{data['port']}.log")
+        elif response.status_code == 404:
+            data = response.json()
+            console.print(f"[red]Error: {data.get('detail', 'Model not found')}[/red]")
+            raise typer.Exit(1)
+        else:
+            data = response.json()
+            console.print(f"[red]Failed to start model: {data.get('detail', response.text)}[/red]")
+            raise typer.Exit(1)
+
+    except httpx.TimeoutException:
+        console.print("[red]Failed to restart model: timed out[/red]")
+        raise typer.Exit(1)
+    except httpx.ConnectError:
+        console.print("[red]Failed to connect to vllama server[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def ps():
     """List all running VLLM instances."""
     server_port = ensure_server_running()
