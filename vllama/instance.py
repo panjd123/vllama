@@ -70,6 +70,37 @@ class VLLMInstanceManager:
             config = ModelConfig(model_name=model_info.model_id)
         return config
 
+    def _get_default_devices(self, model_config: ModelConfig) -> list[int]:
+        """Get default devices for a model.
+
+        Priority:
+        1. model_config.devices if specified
+        2. config.default_device if specified
+        3. Auto-select device with most free memory
+
+        Args:
+            model_config: Model configuration
+
+        Returns:
+            List of device IDs
+        """
+        # Use model-specific devices if specified
+        if model_config.devices:
+            return model_config.devices
+
+        # Use global default device if specified
+        if self.config.default_device is not None:
+            return [self.config.default_device]
+
+        # Auto-select device with most total memory
+        if self.gpu_monitor.get_device_count() > 0:
+            best_device = self.gpu_monitor.get_device_with_most_total_memory()
+            logger.info(f"Auto-selected GPU {best_device} (most total memory)")
+            return [best_device]
+
+        # Fallback to device 0
+        return [0]
+
     def _calculate_optimal_memory_utilization(self, devices: list[int]) -> float:
         """Calculate optimal GPU memory utilization based on available memory.
 
@@ -283,8 +314,8 @@ class VLLMInstanceManager:
                 self.state_manager.get_used_ports()
             )
 
-        # Prepare devices
-        devices = model_config.devices or list(range(model_config.tensor_parallel_size))
+        # Prepare devices - use model-specific, default, or auto-select
+        devices = self._get_default_devices(model_config)
 
         # Calculate GPU memory utilization (same logic as in _build_vllm_command)
         gpu_memory_util = model_config.gpu_memory_utilization
@@ -722,7 +753,7 @@ class VLLMInstanceManager:
         if instance is None or instance.status == InstanceStatus.STOPPED:
             # Starting new instance - estimate memory needed (conservative estimate)
             model_config = self._get_model_config(model_info)
-            devices = model_config.devices or [0]
+            devices = self._get_default_devices(model_config)
 
             if auto_evict and self.gpu_monitor.get_device_count() > 0:
                 mem_info = self.gpu_monitor.get_memory_info(devices[0])

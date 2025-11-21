@@ -25,6 +25,9 @@ services:
       - VLLAMA_UNLOAD_TIMEOUT=1800
       - VLLAMA_UNLOAD_MODE=2
 
+      # Default GPU device (optional, auto-selects by most total memory if not set)
+      # - VLLAMA_DEFAULT_DEVICE=0
+
       # Hugging Face home directory (replaces deprecated TRANSFORMERS_CACHE)
       - HF_HOME=/root/.cache/huggingface
 

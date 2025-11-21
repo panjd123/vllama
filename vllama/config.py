@@ -38,6 +38,7 @@ class VllamaConfig(BaseSettings):
         VLLAMA_TRANSFORMERS_CACHE: Model cache directory (overrides HF_HOME/hub)
         VLLAMA_UNLOAD_TIMEOUT: Seconds of inactivity before unloading (default: 1800)
         VLLAMA_UNLOAD_MODE: Unload mode 1/2/3 (default: 2)
+        VLLAMA_DEFAULT_DEVICE: Default GPU device ID (default: auto-select by max total memory)
         HF_HOME: Hugging Face home directory (uses $HF_HOME/hub for model cache)
     """
 
@@ -62,6 +63,9 @@ class VllamaConfig(BaseSettings):
     # Unload settings (configurable via environment variables)
     unload_timeout: int = Field(default=1800, description="Seconds of inactivity before unloading")
     unload_mode: int = Field(default=2, ge=1, le=3, description="1=sleep level1, 2=sleep level2, 3=stop instance")
+
+    # Default GPU device (configurable via environment variables)
+    default_device: Optional[int] = Field(default=None, description="Default GPU device ID, None for auto-select by max total memory")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

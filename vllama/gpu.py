@@ -89,6 +89,48 @@ class GPUMonitor:
             result[i] = self.get_memory_info(i)
         return result
 
+    def get_device_with_most_free_memory(self) -> int:
+        """Get the device ID with the most free memory.
+
+        Returns:
+            Device ID with most free memory, or 0 if no devices available
+        """
+        if not self._initialized or self.device_count == 0:
+            return 0
+
+        max_free = -1
+        best_device = 0
+
+        for i in range(self.device_count):
+            mem_info = self.get_memory_info(i)
+            if mem_info["free"] > max_free:
+                max_free = mem_info["free"]
+                best_device = i
+
+        logger.debug(f"Device {best_device} has most free memory: {max_free / (1024**3):.2f}GB")
+        return best_device
+
+    def get_device_with_most_total_memory(self) -> int:
+        """Get the device ID with the most total memory.
+
+        Returns:
+            Device ID with most total memory, or 0 if no devices available
+        """
+        if not self._initialized or self.device_count == 0:
+            return 0
+
+        max_total = -1
+        best_device = 0
+
+        for i in range(self.device_count):
+            mem_info = self.get_memory_info(i)
+            if mem_info["total"] > max_total:
+                max_total = mem_info["total"]
+                best_device = i
+
+        logger.debug(f"Device {best_device} has most total memory: {max_total / (1024**3):.2f}GB")
+        return best_device
+
     def has_enough_memory(
         self,
         device_ids: list[int],
