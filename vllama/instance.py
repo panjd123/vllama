@@ -67,6 +67,7 @@ class VLLMInstanceManager:
         """
         config = self.yaml_manager.get_config(model_info.model_id)
         if config is None:
+            logger.info(f"No YAML config for {model_info.model_id}, using default settings")
             config = ModelConfig(model_name=model_info.model_id)
         return config
 
@@ -279,7 +280,11 @@ class VLLMInstanceManager:
 
         # Add extra arguments
         for key, value in model_config.extra_args.items():
-            cmd.extend([f"--{key}", str(value)])
+            if isinstance(value, bool):
+                if value:
+                    cmd.append(f"--{key}")
+            else:
+                cmd.extend([f"--{key}", str(value)])
 
         return cmd
 

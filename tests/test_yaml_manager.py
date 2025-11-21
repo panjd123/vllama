@@ -16,7 +16,7 @@ class TestYAMLConfigManager:
         """Test initialization with non-existent config file."""
         manager = YAMLConfigManager(yaml_config_file)
         assert manager.config_file == yaml_config_file
-        assert manager.configs == {}
+        assert manager.get_all_configs() == {}
 
     def test_initialization_with_existing_file(self, yaml_config_file):
         """Test initialization with existing config file."""
@@ -34,8 +34,9 @@ class TestYAMLConfigManager:
 
         # Load it
         manager = YAMLConfigManager(yaml_config_file)
-        assert len(manager.configs) == 1
-        assert "test/model" in manager.configs
+        configs = manager.get_all_configs()
+        assert len(configs) == 1
+        assert "test/model" in configs
 
         config = manager.get_config("test/model")
         assert config.model_name == "test/model"
@@ -86,9 +87,10 @@ class TestYAMLConfigManager:
         manager1.set_config("model1", ModelConfig(model_name="model1", port=8000))
         manager1.set_config("model2", ModelConfig(model_name="model2", port=8001))
 
-        # Load in new manager
+        # Load in new manager (reads directly from file)
         manager2 = YAMLConfigManager(yaml_config_file)
-        assert len(manager2.configs) == 2
+        configs = manager2.get_all_configs()
+        assert len(configs) == 2
         assert manager2.has_config("model1")
         assert manager2.has_config("model2")
 
@@ -198,7 +200,7 @@ class TestYAMLConfigManager:
 
         # Should not crash, just return empty configs
         manager = YAMLConfigManager(yaml_config_file)
-        assert manager.configs == {}
+        assert manager.get_all_configs() == {}
 
     def test_partial_invalid_configs(self, yaml_config_file):
         """Test handling of partially invalid configs."""

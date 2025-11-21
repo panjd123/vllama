@@ -12,7 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class YAMLConfigManager:
-    """Manages YAML configuration files for model deployments."""
+    """Manages YAML configuration files for model deployments.
+
+    This class reads directly from the config file on every operation
+    to ensure consistency with manual file edits.
+    """
 
     def __init__(self, config_file: Path):
         """Initialize YAML config manager.
@@ -21,58 +25,42 @@ class YAMLConfigManager:
             config_file: Path to models.yaml file
         """
         self.config_file = config_file
-        self.configs: dict[str, ModelConfig] = self._load_configs()
 
-    def _load_configs(self) -> dict[str, ModelConfig]:
-        """Load model configurations from YAML file.
+    def _read_yaml(self) -> dict:
+        """Read and parse YAML config file.
 
         Returns:
-            Dictionary mapping model_id to ModelConfig
+            Dictionary of raw YAML data, empty dict if file doesn't exist
         """
         if not self.config_file.exists():
-            logger.info(f"Config file does not exist: {self.config_file}")
             return {}
 
         try:
             with open(self.config_file, "r") as f:
                 data = yaml.safe_load(f) or {}
-
-            configs = {}
-            for model_id, config_data in data.items():
-                try:
-                    configs[model_id] = ModelConfig(model_name=model_id, **config_data)
-                except Exception as e:
-                    logger.error(f"Failed to parse config for {model_id}: {e}")
-
-            logger.info(f"Loaded {len(configs)} model configurations")
-            return configs
-
+            return data
         except Exception as e:
-            logger.error(f"Failed to load YAML config: {e}")
+            logger.error(f"Failed to read YAML config: {e}")
             return {}
 
-    def save_configs(self):
-        """Save current configurations to YAML file."""
+    def _write_yaml(self, data: dict):
+        """Write data to YAML config file.
+
+        Args:
+            data: Dictionary to write to YAML
+        """
         try:
             # Ensure directory exists
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Convert configs to dict format
-            data = {}
-            for model_id, config in self.configs.items():
-                # Convert ModelConfig to dict, excluding model_name (it's the key)
-                config_dict = config.model_dump(exclude={"model_name"})
-                # Remove None values for cleaner YAML
-                config_dict = {k: v for k, v in config_dict.items() if v is not None}
-                data[model_id] = config_dict
-
             with open(self.config_file, "w") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
-            logger.info(f"Saved configurations to {self.config_file}")
+            logger.debug(f"Saved configurations to {self.config_file}")
 
         except Exception as e:
-            logger.error(f"Failed to save YAML config: {e}")
+            logger.error(f"Failed to write YAML config: {e}")
+            raise
 
     def get_config(self, model_id: str) -> Optional[ModelConfig]:
         """Get configuration for a specific model.
@@ -83,7 +71,17 @@ class YAMLConfigManager:
         Returns:
             ModelConfig if exists, None otherwise
         """
-        return self.configs.get(model_id)
+        data = self._read_yaml()
+        config_data = data.get(model_id)
+
+        if config_data is None:
+            return None
+
+        try:
+            return ModelConfig(model_name=model_id, **config_data)
+        except Exception as e:
+            logger.error(f"Failed to parse config for {model_id}: {e}")
+            return None
 
     def set_config(self, model_id: str, config: ModelConfig):
         """Set configuration for a model.
@@ -92,9 +90,19 @@ class YAMLConfigManager:
             model_id: Model identifier
             config: Model configuration
         """
+        # Read current configs
+        data = self._read_yaml()
+
+        # Update config for this model
         config.model_name = model_id
-        self.configs[model_id] = config
-        self.save_configs()
+        config_dict = config.model_dump(exclude={"model_name"})
+        # Remove None values for cleaner YAML
+        config_dict = {k: v for k, v in config_dict.items() if v is not None}
+        data[model_id] = config_dict
+
+        # Write back
+        self._write_yaml(data)
+        logger.info(f"Updated configuration for {model_id}")
 
     def remove_config(self, model_id: str):
         """Remove configuration for a model.
@@ -102,9 +110,13 @@ class YAMLConfigManager:
         Args:
             model_id: Model identifier
         """
-        if model_id in self.configs:
-            del self.configs[model_id]
-            self.save_configs()
+        # Read current configs
+        data = self._read_yaml()
+
+        if model_id in data:
+            del data[model_id]
+            self._write_yaml(data)
+            logger.info(f"Removed configuration for {model_id}")
 
     def has_config(self, model_id: str) -> bool:
         """Check if configuration exists for a model.
@@ -115,7 +127,8 @@ class YAMLConfigManager:
         Returns:
             True if config exists
         """
-        return model_id in self.configs
+        data = self._read_yaml()
+        return model_id in data
 
     def get_all_configs(self) -> dict[str, ModelConfig]:
         """Get all model configurations.
@@ -123,7 +136,16 @@ class YAMLConfigManager:
         Returns:
             Dictionary of model_id -> ModelConfig
         """
-        return self.configs
+        data = self._read_yaml()
+        configs = {}
+
+        for model_id, config_data in data.items():
+            try:
+                configs[model_id] = ModelConfig(model_name=model_id, **config_data)
+            except Exception as e:
+                logger.error(f"Failed to parse config for {model_id}: {e}")
+
+        return configs
 
     def update_config(
         self,
@@ -139,15 +161,18 @@ class YAMLConfigManager:
         Returns:
             Updated ModelConfig
         """
-        if model_id in self.configs:
+        # Get existing config or create new one
+        config = self.get_config(model_id)
+
+        if config is None:
+            # Create new config
+            config = ModelConfig(model_name=model_id, **kwargs)
+        else:
             # Update existing config
-            config = self.configs[model_id]
             for key, value in kwargs.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
-        else:
-            # Create new config
-            config = ModelConfig(model_name=model_id, **kwargs)
 
+        # Save updated config
         self.set_config(model_id, config)
         return config

@@ -2,29 +2,35 @@
 # Location: ~/.vllama/models.yaml
 
 # Chat model example
-Qwen/Qwen3-0.6B:
+Qwen/Qwen3-4B-Instruct-2507:
   gpu_memory_utilization: 0.9
   devices: [0]
   tensor_parallel_size: 1
-  max_model_len: 4096
+  max_model_len: 32768
   dtype: auto
   trust_remote_code: false
+  extra_args:
+    enable-prefix-caching: true
+    max-num-seqs: "256"
+
+Qwen/Qwen3-30B-A3B-Instruct-2507:
+  gpu_memory_utilization: 0.9
+  devices: [1]
+  max_model_len: 32768
+  extra_args:
+    enable-prefix-caching: true
 
 # Embedding model example
-BAAI/bge-m3:
-  port: 8001
-  gpu_memory_utilization: 0.5
-  devices: [1]
-  tensor_parallel_size: 1
-  dtype: auto
+Qwen/Qwen3-Embedding-0.6B:
+  gpu_memory_utilization: 0.3
+  devices: [0]
+  max_model_len: 8192
 
 # Reranker model example
 tomaarsen/Qwen3-Reranker-0.6B-seq-cls:
-  port: 8002
   gpu_memory_utilization: 0.3
-  devices: [1]
-  tensor_parallel_size: 1
-  dtype: auto
+  devices: [0]
+  max_model_len: 8192
 
 # Large model with tensor parallelism (using 2 GPUs)
 # meta-llama/Llama-2-70b-hf:
@@ -43,5 +49,5 @@ tomaarsen/Qwen3-Reranker-0.6B-seq-cls:
 #   tensor_parallel_size: 1
 #   dtype: bfloat16
 #   extra_args:
-#     enable-prefix-caching: "true"
+#     enable-prefix-caching: true
 #     max-num-seqs: "256"

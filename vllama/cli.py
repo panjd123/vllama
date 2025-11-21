@@ -524,9 +524,8 @@ def assign(
     if port is not None:
         model_config.port = port
 
-    # Save config
+    # Save config (set_config automatically saves to file)
     yaml_manager.set_config(model_info.model_id, model_config)
-    yaml_manager.save_configs()
 
     console.print(f"[green]Updated configuration for {model_info.model_id}[/green]")
     console.print(f"  Devices: {model_config.devices}")

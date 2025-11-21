@@ -21,7 +21,7 @@ class ModelConfig(BaseModel):
     max_model_len: Optional[int] = 2048
     trust_remote_code: bool = False
     dtype: str = "auto"
-    extra_args: dict[str, str] = Field(default_factory=dict)
+    extra_args: dict[str, str | bool] = Field(default_factory=dict)
 
 
 class VllamaConfig(BaseSettings):

@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: panjd123/vllama:latest
-    container_name: vllama-server
+    container_name: vllama
 
     # GPU support - requires nvidia-docker
     deploy:
