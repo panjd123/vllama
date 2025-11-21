@@ -75,7 +75,7 @@ if __name__ == "__main__":
     print("=" * 50)
     print("\nMake sure vllama server is running:")
     print("  vllama serve")
-    print("\nAnd that you have models cached in TRANSFORMERS_CACHE")
+    print("\nAnd that you have models cached in HF_HOME/hub")
 
     try:
         # List available models
@@ -91,5 +91,5 @@ if __name__ == "__main__":
         print(f"\nError: {e}")
         print("\nMake sure:")
         print("1. vllama server is running (vllama serve)")
-        print("2. You have models in TRANSFORMERS_CACHE")
+        print("2. You have models in HF_HOME/hub")
         print("3. The model names match your cached models")

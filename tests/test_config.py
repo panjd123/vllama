@@ -74,10 +74,10 @@ class TestVllamaConfig:
             config.get_next_available_port(used_ports)
 
     def test_transformers_cache_fallback(self, mock_env):
-        """Test transformers cache fallback to TRANSFORMERS_CACHE."""
-        mock_env(TRANSFORMERS_CACHE="/fallback/cache")
+        """Test transformers cache fallback to HF_HOME."""
+        mock_env(HF_HOME="/custom/hf_home")
         config = VllamaConfig()
-        assert config.transformers_cache == "/fallback/cache"
+        assert config.transformers_cache == "/custom/hf_home/hub"
 
 
 class TestModelConfig:

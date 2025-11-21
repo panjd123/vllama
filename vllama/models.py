@@ -19,13 +19,13 @@ class ModelInfo(BaseModel):
 
 
 def scan_transformers_cache(cache_dir: str) -> list[ModelInfo]:
-    """Scan TRANSFORMERS_CACHE directory for available models.
+    """Scan HF_HOME/hub directory for available models.
 
     The HuggingFace cache structure is:
-    {cache_dir}/models--{org}--{model}/snapshots/{hash}/
+    {HF_HOME}/hub/models--{org}--{model}/snapshots/{hash}/
 
     Args:
-        cache_dir: Path to TRANSFORMERS_CACHE directory
+        cache_dir: Path to HF_HOME/hub directory
 
     Returns:
         List of ModelInfo objects

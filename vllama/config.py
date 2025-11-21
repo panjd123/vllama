@@ -6,7 +6,7 @@ Fixed paths are defined in vllama.constants.VllamaPaths.
 
 import os
 from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,9 +35,10 @@ class VllamaConfig(BaseSettings):
         VLLAMA_PORT: Server port (default: 33258)
         VLLAMA_VLLM_PORT_START: VLLM instance port range start (default: 33300)
         VLLAMA_VLLM_PORT_END: VLLM instance port range end (default: 34300)
-        VLLAMA_TRANSFORMERS_CACHE: Model cache directory
+        VLLAMA_TRANSFORMERS_CACHE: Model cache directory (overrides HF_HOME/hub)
         VLLAMA_UNLOAD_TIMEOUT: Seconds of inactivity before unloading (default: 1800)
         VLLAMA_UNLOAD_MODE: Unload mode 1/2/3 (default: 2)
+        HF_HOME: Hugging Face home directory (uses $HF_HOME/hub for model cache)
     """
 
     model_config = SettingsConfigDict(
@@ -60,17 +61,15 @@ class VllamaConfig(BaseSettings):
 
     # Unload settings (configurable via environment variables)
     unload_timeout: int = Field(default=1800, description="Seconds of inactivity before unloading")
-    unload_mode: Literal[1, 2, 3] = Field(default=2, description="1=sleep level1, 2=sleep level2, 3=stop instance")
+    unload_mode: int = Field(default=2, ge=1, le=3, description="1=sleep level1, 2=sleep level2, 3=stop instance")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        # Use TRANSFORMERS_CACHE as fallback if VLLAMA_TRANSFORMERS_CACHE not set
+        # Use HF_HOME if transformers_cache is not explicitly set
         if self.transformers_cache is None:
-            self.transformers_cache = os.environ.get(
-                "TRANSFORMERS_CACHE",
-                os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-            )
+            hf_home = os.environ.get("HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
+            self.transformers_cache = os.path.join(hf_home, "hub")
 
     def get_next_available_port(self, used_ports: set[int]) -> int:
         """Get next available port for VLLM instance."""

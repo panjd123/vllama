@@ -34,6 +34,22 @@ app = typer.Typer(name="vllama", help="A vllm management tool with Ollama-like i
 console = Console()
 
 
+def get_transformers_cache() -> str:
+    """Get the transformers cache directory.
+
+    Returns the path following this priority:
+    1. HF_HOME/hub if HF_HOME is set
+    2. ~/.cache/huggingface/hub as default
+
+    Returns:
+        Path to transformers cache directory
+    """
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return os.path.join(hf_home, "hub")
+    return os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+
+
 def get_server_port() -> Optional[int]:
     """Get server port from PID file.
 
@@ -427,12 +443,7 @@ def assign(
     yaml_manager = YAMLConfigManager(VllamaPaths.MODELS_CONFIG_FILE)
 
     # Scan models to find the requested one
-    # We need transformers_cache, use env var or default
-    import os
-    transformers_cache = os.environ.get(
-        "TRANSFORMERS_CACHE",
-        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-    )
+    transformers_cache = get_transformers_cache()
     models = scan_transformers_cache(transformers_cache)
     model_info = find_model_by_name(models, model)
 
@@ -518,15 +529,14 @@ def pull(
         vllama pull Qwen/Qwen3-0.6B
         vllama pull BAAI/bge-m3 --revision main
     """
-    # Get transformers cache directory
-    transformers_cache = os.environ.get(
-        "TRANSFORMERS_CACHE",
-        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-    )
+    # Get HF_HOME directory for cache
+    hf_home = os.environ.get("HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
+    transformers_cache = os.path.join(hf_home, "hub")
 
     console.print(f"[cyan]Downloading model: {model}[/cyan]")
     if revision:
         console.print(f"[cyan]Revision: {revision}[/cyan]")
+    console.print(f"[cyan]HF_HOME: {hf_home}[/cyan]")
     console.print(f"[cyan]Cache directory: {transformers_cache}[/cyan]")
     console.print()
 
@@ -536,7 +546,7 @@ def pull(
             local_path = snapshot_download(
                 repo_id=model,
                 revision=revision,
-                cache_dir=transformers_cache,
+                cache_dir=hf_home,  # snapshot_download expects HF_HOME, not HF_HOME/hub
                 resume_download=True,
                 local_files_only=False,
             )
@@ -556,14 +566,11 @@ def pull(
 def list_models():
     """List all available models in cache.
 
-    This command scans the TRANSFORMERS_CACHE directory and displays
+    This command scans the HF_HOME/hub directory and displays
     all downloaded models with their types and locations.
     """
     # Get transformers cache directory
-    transformers_cache = os.environ.get(
-        "TRANSFORMERS_CACHE",
-        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-    )
+    transformers_cache = get_transformers_cache()
 
     console.print(f"[cyan]Scanning models in: {transformers_cache}[/cyan]")
     console.print()

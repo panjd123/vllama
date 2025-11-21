@@ -14,9 +14,11 @@
 
 ## 📦 安装
 
+### 方式一：本地安装
+
 ```bash
 # 克隆仓库
-git clone <repository-url>
+git clone https://github.com/panjd123/vllama.git
 cd vllama
 
 # 使用 uv 安装（推荐）
@@ -24,6 +26,85 @@ uv sync
 
 # 或使用 pip
 pip install -e .
+```
+
+### 方式二：Docker Compose（推荐）
+
+#### 前置要求
+
+- Docker >= 20.10
+- Docker Compose >= 1.29
+- NVIDIA GPU 和 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker)
+- 已下载的模型（位于 `~/.cache/huggingface`）
+
+#### 快速启动
+
+```bash
+# 克隆仓库
+git clone https://github.com/panjd123/vllama.git
+cd vllama
+
+# 构建并启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止服务
+docker compose down
+```
+
+#### 配置说明
+
+所有配置通过 `docker-compose.yml` 中的环境变量设置：
+
+```yaml
+environment:
+  - VLLAMA_HOST=0.0.0.0           # 监听地址
+  - VLLAMA_PORT=33258             # 服务端口
+  - VLLAMA_VLLM_PORT_START=33300  # vLLM 实例起始端口
+  - VLLAMA_VLLM_PORT_END=34300    # vLLM 实例结束端口
+  - VLLAMA_UNLOAD_TIMEOUT=1800    # 自动卸载超时（秒）
+  - VLLAMA_UNLOAD_MODE=2          # 卸载模式 (1/2/3)
+  - HF_HOME=/root/.cache/huggingface  # HF 缓存目录
+```
+
+#### 卷挂载
+
+```yaml
+volumes:
+  # 挂载主机的 Hugging Face 缓存（直接使用已下载的模型）
+  - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+
+  # vllama 配置目录
+  - ./vllama_config:/root/.vllama
+```
+
+#### Docker 中使用 CLI
+
+```bash
+# 查看运行中的实例
+docker compose exec vllama vllama ps
+
+# 启动模型
+docker compose exec vllama vllama start Qwen/Qwen3-0.6B
+
+# 列出可用模型
+docker compose exec vllama vllama list
+
+# 下载模型
+docker compose exec vllama vllama pull BAAI/bge-m3
+```
+
+#### 直接拉取镜像
+
+```bash
+# 从 Docker Hub 拉取
+docker pull panjd123/vllama:latest
+
+# 使用 docker-compose.yml（修改 build 为 image）
+# image: panjd123/vllama:latest
+docker compose up -d
 ```
 
 ## 🚀 快速开始
@@ -96,7 +177,7 @@ vllama assign "Qwen/Qwen3-0.6B" --gpu-memory 0.85 --devices 0
 ### 环境变量
 
 ```bash
-export TRANSFORMERS_CACHE=/path/to/models  # 模型缓存目录
+export HF_HOME=/path/to/huggingface  # Hugging Face 主目录（模型缓存位于 $HF_HOME/hub）
 ```
 
 ### 模型配置文件

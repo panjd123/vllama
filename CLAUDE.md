@@ -9,7 +9,7 @@
 - 根据请求的模型名称，自动转发到对应的 vLLM 实例端口
 - **自动启动**：API 请求模型时，如果模型未运行，自动启动或唤醒
 - 对外暴露 OpenAI 兼容的 API 接口
-- `/v1/models` 端点列出所有可用模型（从 TRANSFORMERS_CACHE 扫描）
+- `/v1/models` 端点列出所有可用模型（从 HF_HOME/hub 扫描）
 
 ### 2. LRU 自动淘汰机制
 

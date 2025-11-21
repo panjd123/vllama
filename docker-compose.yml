@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   vllama:
     build:
       context: .
       dockerfile: Dockerfile
-    image: vllama:latest
+    image: panjd123/vllama:latest
     container_name: vllama-server
 
     # GPU support - requires nvidia-docker
@@ -27,8 +25,8 @@ services:
       - VLLAMA_UNLOAD_TIMEOUT=1800
       - VLLAMA_UNLOAD_MODE=2
 
-      # Transformers cache location
-      - TRANSFORMERS_CACHE=/root/.cache/huggingface/hub
+      # Hugging Face home directory (replaces deprecated TRANSFORMERS_CACHE)
+      - HF_HOME=/root/.cache/huggingface
 
       # Optional: Hugging Face token for private models
       # - HF_TOKEN=${HF_TOKEN}
@@ -38,7 +36,7 @@ services:
       # Vllama server port
       - "33258:33258"
       # vLLM instance port range
-      - "33300-33350:33300-33350"
+      # - "33300-33350:33300-33350"
 
     # Volume mounts
     volumes:
