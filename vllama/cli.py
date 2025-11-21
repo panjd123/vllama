@@ -669,7 +669,7 @@ def assign(
             instance_running = any(inst.get("model_id") == model_info.model_id for inst in instances)
 
             if not instance_running:
-                console.print("[yellow]Instance not running.[/yellow]")
+                console.print("[yellow]Instance not running[/yellow]")
             else:
                 # Stop instance
                 response = httpx.post(
