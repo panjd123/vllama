@@ -358,7 +358,17 @@ class VLLMInstanceManager:
             safe_model_id = model_id.replace("/", "_")
             log_file = log_dir / f"{safe_model_id}_{port}.log"
 
+            # Log model configuration
             logger.info(f"Starting VLLM instance for {model_id} on port {port}")
+            logger.info(f"Model configuration:")
+            logger.info(f"  - devices: {devices}")
+            logger.info(f"  - gpu_memory_utilization: {gpu_memory_util}")
+            logger.info(f"  - max_model_len: {model_config.max_model_len}")
+            logger.info(f"  - tensor_parallel_size: {model_config.tensor_parallel_size}")
+            logger.info(f"  - dtype: {model_config.dtype}")
+            logger.info(f"  - trust_remote_code: {model_config.trust_remote_code}")
+            if model_config.extra_args:
+                logger.info(f"  - extra_args: {model_config.extra_args}")
             logger.info(f"Logs will be written to: {log_file}")
             logger.debug(f"Command: {' '.join(cmd)}")
 
