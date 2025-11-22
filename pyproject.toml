@@ -7,10 +7,10 @@ name = "vllama"
 version = "0.1.0"
 description = "A vllm management tool with Ollama-like interface"
 readme = {file = "README.md", content-type = "text/markdown; charset=UTF-8"}
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
+    "vllm>=0.4.0",
     "typer>=0.20.0",
-    "vllm>=0.11.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
     "pydantic>=2.10.0",
@@ -31,6 +31,11 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vllama*"]
+exclude = ["vllama_config*", "tests*"]
 
 [[tool.uv.index]]
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"

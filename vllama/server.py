@@ -123,6 +123,43 @@ class VllamaServer:
             self._http_client = httpx.AsyncClient(timeout=300.0)
         return self._http_client
 
+    async def _auto_warmup_models(self):
+        """Auto warm-up models configured in models.yaml."""
+        warmup_models = self.yaml_manager.get_warmup_models()
+
+        if not warmup_models:
+            logger.debug("No warmup models configured")
+            return
+
+        logger.info(f"Auto-warming up {len(warmup_models)} model(s): {warmup_models}")
+
+        # Use asyncio.gather to warm up models in parallel
+        tasks = []
+        for model_name in warmup_models:
+            # Find model in cache
+            model_info = find_model_by_name(self.models, model_name)
+            if model_info:
+                await self._warmup_single_model(model_info)
+            else:
+                logger.warning(f"Warmup model not found in cache: {model_name}")
+
+    async def _warmup_single_model(self, model_info) -> bool:
+        """Warm up a single model.
+
+        Args:
+            model_info: Model information
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.instance_manager.ensure_instance_running(model_info)
+            logger.info(f"Warmed up model: {model_info.model_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to warm up {model_info.model_id}: {e}")
+            return False
+
     def _setup_routes(self):
         """Setup FastAPI routes."""
 
@@ -135,6 +172,9 @@ class VllamaServer:
             # Start scheduler
             await self.scheduler.start()
             logger.info("Vllama server started")
+
+            # Auto warm-up models if configured
+            await self._auto_warmup_models()
 
         @self.app.on_event("shutdown")
         async def shutdown():

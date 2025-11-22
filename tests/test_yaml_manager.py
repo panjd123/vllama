@@ -256,3 +256,68 @@ class TestYAMLConfigManager:
         # Verify directory was created
         assert nested_config_file.parent.exists()
         assert nested_config_file.exists()
+
+    def test_warmup_models_auto_start(self, yaml_config_file):
+        """Test warmup models using auto_start field."""
+        manager = YAMLConfigManager(yaml_config_file)
+
+        # Add models with auto_start
+        manager.set_config("model1", ModelConfig(model_name="model1", auto_start=True))
+        manager.set_config("model2", ModelConfig(model_name="model2", auto_start=False))
+        manager.set_config("model3", ModelConfig(model_name="model3", auto_start=True))
+
+        # Get warmup models
+        warmup_models = manager.get_warmup_models()
+        assert len(warmup_models) == 2
+        assert "model1" in warmup_models
+        assert "model3" in warmup_models
+        assert "model2" not in warmup_models
+
+    def test_add_warmup_model(self, yaml_config_file):
+        """Test adding model to warmup list."""
+        manager = YAMLConfigManager(yaml_config_file)
+
+        # Add model to warmup
+        manager.add_warmup_model("test/model")
+
+        # Verify
+        config = manager.get_config("test/model")
+        assert config is not None
+        assert config.auto_start is True
+
+        warmup_models = manager.get_warmup_models()
+        assert "test/model" in warmup_models
+
+    def test_remove_warmup_model(self, yaml_config_file):
+        """Test removing model from warmup list."""
+        manager = YAMLConfigManager(yaml_config_file)
+
+        # Add model first
+        manager.add_warmup_model("test/model")
+        assert "test/model" in manager.get_warmup_models()
+
+        # Remove it
+        manager.remove_warmup_model("test/model")
+        config = manager.get_config("test/model")
+        assert config.auto_start is False
+        assert "test/model" not in manager.get_warmup_models()
+
+    def test_clear_warmup_models(self, yaml_config_file):
+        """Test clearing all warmup models."""
+        manager = YAMLConfigManager(yaml_config_file)
+
+        # Add multiple warmup models
+        manager.set_config("model1", ModelConfig(model_name="model1", auto_start=True))
+        manager.set_config("model2", ModelConfig(model_name="model2", auto_start=True))
+        assert len(manager.get_warmup_models()) == 2
+
+        # Clear all
+        manager.clear_warmup_models()
+        warmup_models = manager.get_warmup_models()
+        assert len(warmup_models) == 0
+
+        # Verify configs still exist but auto_start is False
+        assert manager.has_config("model1")
+        assert manager.has_config("model2")
+        assert manager.get_config("model1").auto_start is False
+        assert manager.get_config("model2").auto_start is False

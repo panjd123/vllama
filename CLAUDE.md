@@ -70,7 +70,20 @@ vllama sleep MODEL [--level {1,2,3}]       # 休眠模型
 vllama wake-up MODEL                        # 唤醒模型（别名：wakeup, wake_up）
 
 # 配置管理
-vllama assign MODEL [--devices D] [--gpu-memory M] [--restart]
+vllama assign MODEL [OPTIONS]
+  # 主要选项：
+  --devices, -d TEXT              # GPU ��备 (例如: "0,1")
+  --gpu-memory, -m FLOAT          # GPU 显存使用率 (0.1-1.0)
+  --max-model-len, -l INT         # 最大上下文长度
+  --tensor-parallel-size, -t INT  # 张量并行大小
+  --dtype TEXT                    # 数据类型
+  --trust-remote-code             # 启用信任远程代码
+  --no-trust-remote-code          # 禁用信任远程代码
+  --auto-start                    # 启用服务器启动时自动加载
+  --no-auto-start                 # 禁用服务器启动时自动加载
+  --extra-args, -e TEXT           # 额外参数 (key=value)
+  --restart, -r                   # 应用配置后重启
+  --show, -s                      # 显示当前配置
 ```
 
 ### 7. 显存检测与记录
@@ -91,8 +104,12 @@ Qwen/Qwen3-0.6B:
   tensor_parallel_size: 1         # 多卡并行
   trust_remote_code: false
   dtype: auto
+  auto_start: true                # 服务器启动时自动加载
   extra_args: {}
 ```
+
+**注意**：`auto_start` 字段控制模型是否在服务器启动时自动加载（warm-up 功能）。
+可以通过 `vllama warm-up --save` 或 `vllama assign --auto-start` 设置。
 
 ### 9. 日志系统
 

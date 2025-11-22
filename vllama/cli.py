@@ -345,6 +345,129 @@ def restart(model: str = typer.Argument(..., help="Model name to restart")):
         raise typer.Exit(1)
 
 
+@app.command(name="warm-up")
+@app.command(name="warmup")
+@app.command(name="warm_up")
+def warmup(
+    models: list[str] = typer.Argument(None, help="Models to warm up (leave empty to show current warmup list)"),
+    save: bool = typer.Option(False, "--save", "-s", help="Save models to auto-warmup on server start"),
+    remove: Optional[str] = typer.Option(None, "--remove", "-r", help="Remove a model from warmup list"),
+    clear: bool = typer.Option(False, "--clear", "-c", help="Clear all warmup models"),
+    show: bool = typer.Option(False, "--show", help="Show current warmup list"),
+):
+    """Warm up models by pre-loading them.
+
+    Warm up immediately starts the specified models. With --save, they will auto-start on server boot.
+
+    Examples:
+        # Warm up models now
+        vllama warm-up Qwen/Qwen3-0.6B BAAI/bge-m3
+
+        # Save for auto-warmup on server start
+        vllama warm-up Qwen/Qwen3-0.6B --save
+
+        # Show current warmup list
+        vllama warm-up --show
+
+        # Remove a model from warmup list
+        vllama warm-up --remove Qwen/Qwen3-0.6B
+
+        # Clear all warmup models
+        vllama warm-up --clear
+    """
+    yaml_manager = YAMLConfigManager(VllamaPaths.MODELS_CONFIG_FILE)
+
+    # Handle --clear
+    if clear:
+        yaml_manager.clear_warmup_models()
+        console.print("[green]Cleared all warmup models[/green]")
+        return
+
+    # Handle --remove
+    if remove:
+        yaml_manager.remove_warmup_model(remove)
+        console.print(f"[green]Removed {remove} from warmup list[/green]")
+
+        # Show updated list
+        warmup_models = yaml_manager.get_warmup_models()
+        if warmup_models:
+            console.print("\nCurrent warmup models:")
+            for model in warmup_models:
+                console.print(f"  • {model}")
+        else:
+            console.print("\nNo warmup models configured")
+        return
+
+    # Handle --show or no arguments
+    if show or (not models and not clear and not remove):
+        warmup_models = yaml_manager.get_warmup_models()
+        if not warmup_models:
+            console.print("[yellow]No warmup models configured[/yellow]")
+            console.print("\nTo add warmup models:")
+            console.print("  vllama warm-up MODEL1 MODEL2 --save")
+        else:
+            console.print("[cyan]Current warmup models:[/cyan]")
+            for model in warmup_models:
+                console.print(f"  • {model}")
+        return
+
+    # Handle warming up models
+    if not models:
+        console.print("[red]Please specify models to warm up[/red]")
+        raise typer.Exit(1)
+
+    # Save to config if requested
+    if save:
+        for model in models:
+            yaml_manager.add_warmup_model(model)
+        console.print(f"[green]Saved {len(models)} model(s) to warmup list[/green]")
+
+    # Warm up models now
+    server_port = ensure_server_running()
+    console.print(f"Warming up {len(models)} model(s)...")
+
+    success_count = 0
+    for model in models:
+        console.print(f"\n[cyan]Starting {model}...[/cyan]")
+        try:
+            response = httpx.post(
+                f"http://localhost:{server_port}/instances/{model}/start",
+                timeout=300.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                console.print(f"  [green]✓ Started on port {data['port']}[/green]")
+                success_count += 1
+            else:
+                data = response.json()
+                console.print(f"  [red]✗ Failed: {data.get('detail', response.text)}[/red]")
+
+            response = httpx.post(
+                f"http://localhost:{server_port}/instances/{model}/sleep?level=2",
+                timeout=60.0
+            )
+            
+            if response.status_code == 200:
+                console.print(f"  [green]✓ Slept (level 2)[/green]")
+            else:
+                data = response.json()
+                console.print(f"  [red]✗ Failed to sleep: {data.get('detail', response.text)}[/red]")
+
+        except httpx.TimeoutException:
+            console.print(f"  [red]✗ Timed out[/red]")
+        except httpx.ConnectError:
+            console.print(f"  [red]✗ Failed to connect to vllama server[/red]")
+        except Exception as e:
+            console.print(f"  [red]✗ Error: {e}[/red]")
+
+    # Summary
+    console.print(f"\n[cyan]Summary: {success_count}/{len(models)} models warmed up successfully[/cyan]")
+
+    if save:
+        console.print("\n[green]These models will auto-start when vllama server starts[/green]")
+
+
 @app.command()
 def ps():
     """List all running VLLM instances."""
@@ -497,6 +620,7 @@ def assign(
     max_model_len: Optional[int] = typer.Option(None, "--max-model-len", "-l", help="Maximum model context length"),
     trust_remote_code: Optional[bool] = typer.Option(None, "--trust-remote-code", help="Trust remote code"),
     dtype: Optional[str] = typer.Option(None, "--dtype", help="Data type (auto/float16/bfloat16/float32)"),
+    auto_start: Optional[bool] = typer.Option(None, "--auto-start", help="Auto-start on server startup"),
     extra_args: Optional[list[str]] = typer.Option(None, "--extra-args", "--extra", "-e", help="Extra vLLM arguments (key=value format, can be used multiple times)"),
     clear_extra_args: bool = typer.Option(False, "--clear-extra-args", "--clear-extra", help="Clear all extra arguments"),
     restart: bool = typer.Option(False, "--restart", "-r", help="Restart instance if running"),
@@ -516,6 +640,14 @@ def assign(
 
         # Set context length and data type
         vllama assign MODEL --max-model-len 32768 --dtype bfloat16
+
+        # Enable/disable trust remote code
+        vllama assign MODEL --trust-remote-code
+        vllama assign MODEL --no-trust-remote-code
+
+        # Enable/disable auto-start on server startup
+        vllama assign MODEL --auto-start
+        vllama assign MODEL --no-auto-start
 
         # Add extra vLLM arguments
         vllama assign MODEL --extra-args enable-prefix-caching=true --extra-args max-num-seqs=256
@@ -565,6 +697,7 @@ def assign(
         table.add_row("max_model_len", str(model_config.max_model_len) if model_config.max_model_len else "auto")
         table.add_row("trust_remote_code", str(model_config.trust_remote_code))
         table.add_row("dtype", model_config.dtype)
+        table.add_row("auto_start", str(model_config.auto_start))
 
         if model_config.extra_args:
             extra_str = "\n".join([f"{k}={v}" for k, v in model_config.extra_args.items()])
@@ -608,6 +741,10 @@ def assign(
         model_config.dtype = dtype
         changes.append(f"dtype: {dtype}")
 
+    if auto_start is not None:
+        model_config.auto_start = auto_start
+        changes.append(f"auto_start: {auto_start}")
+
     # Handle extra_args
     if clear_extra_args:
         model_config.extra_args = {}
@@ -636,10 +773,18 @@ def assign(
         console.print("[yellow]No changes specified. Use --show to see current configuration.[/yellow]")
         console.print()
         console.print("Available options:")
-        console.print("  --devices, --gpu-memory-utilization (--gpu-memory), --port")
-        console.print("  --tensor-parallel-size, --max-model-len, --trust-remote-code, --dtype")
-        console.print("  --extra-args (--extra, -e) (can be used multiple times)")
-        console.print("  --clear-extra-args (--clear-extra), --show, --restart")
+        console.print("  --devices, -d                GPU 设备 (例如: '0,1')")
+        console.print("  --gpu-memory-utilization, --gpu-memory, -m   GPU 显存使用率 (0.1-1.0)")
+        console.print("  --port, -p                   固定端口")
+        console.print("  --tensor-parallel-size, -t   张量并行大小")
+        console.print("  --max-model-len, -l          最大上下文长度")
+        console.print("  --dtype                      数据类型 (auto/float16/bfloat16/float32)")
+        console.print("  --trust-remote-code / --no-trust-remote-code   信任远程代码")
+        console.print("  --auto-start / --no-auto-start                 服务器启动时自动加载")
+        console.print("  --extra-args, --extra, -e    额外参数 (可多次使用)")
+        console.print("  --clear-extra-args           清空额外参数")
+        console.print("  --restart, -r                重启实例")
+        console.print("  --show, -s                   显示当前配置")
         return
 
     # Save config (set_config automatically saves to file)
@@ -787,6 +932,102 @@ def list_models():
     console.print()
     console.print("Start a model with:")
     console.print("  vllama start <model-id>")
+
+
+@app.command()
+def run(
+    model: str = typer.Argument(..., help="Model to chat with"),
+    system: Optional[str] = typer.Option(None, "--system", "-s", help="System prompt"),
+):
+    """Run an interactive chat session with a model.
+
+    Examples:
+        vllama run Qwen/Qwen3-0.6B
+        vllama run Qwen/Qwen3-0.6B --system "You are a helpful assistant"
+    """
+    import openai
+
+    # Suppress httpx INFO logs
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    server_port = ensure_server_running()
+
+    # Display welcome message
+    console.print(f"[bold cyan]Starting chat with {model}[/bold cyan]")
+    console.print("[dim]Type your message and press Enter. Use '/exit' or Ctrl+D to quit.[/dim]")
+    console.print()
+
+    # Initialize OpenAI client
+    client = openai.OpenAI(
+        base_url=f"http://localhost:{server_port}/v1",
+        api_key="not-needed"
+    )
+
+    # Initialize conversation history
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+
+    try:
+        while True:
+            # Get user input
+            try:
+                user_input = console.input("[bold green]You:[/bold green] ")
+            except EOFError:
+                # Ctrl+D pressed
+                console.print("\n[dim]Goodbye![/dim]")
+                break
+
+            # Check for exit commands
+            if user_input.strip().lower() in ["/exit", "/quit", "/bye", "exit", "quit"]:
+                console.print("[dim]Goodbye![/dim]")
+                break
+
+            # Skip empty input
+            if not user_input.strip():
+                continue
+
+            # Add user message to history
+            messages.append({"role": "user", "content": user_input})
+
+            # Get model response with streaming
+            console.print("[bold blue]Assistant:[/bold blue] ", end="")
+
+            try:
+                stream = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    stream=True,
+                )
+
+                assistant_message = ""
+                for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        console.print(content, end="")
+                        assistant_message += content
+
+                console.print()  # New line after response
+                console.print()  # Extra line for spacing
+
+                # Add assistant message to history
+                messages.append({"role": "assistant", "content": assistant_message})
+
+            except httpx.HTTPStatusError as e:
+                console.print(f"\n[red]Error: {e.response.text}[/red]")
+                # Remove the failed user message from history
+                messages.pop()
+            except httpx.ConnectError:
+                console.print("\n[red]Error: Failed to connect to vllama server[/red]")
+                break
+            except Exception as e:
+                console.print(f"\n[red]Error: {e}[/red]")
+                # Remove the failed user message from history
+                messages.pop()
+
+    except KeyboardInterrupt:
+        # Ctrl+C pressed
+        console.print("\n[dim]Goodbye![/dim]")
 
 
 def main():

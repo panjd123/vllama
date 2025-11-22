@@ -176,3 +176,85 @@ class YAMLConfigManager:
         # Save updated config
         self.set_config(model_id, config)
         return config
+
+    def get_warmup_models(self) -> list[str]:
+        """Get list of models to warm up on server start.
+
+        Returns:
+            List of model IDs with auto_start=True
+        """
+        data = self._read_yaml()
+
+        # Collect all models with auto_start=True
+        warmup_models = []
+        for model_id, config_data in data.items():
+            if isinstance(config_data, dict) and config_data.get("auto_start", False):
+                warmup_models.append(model_id)
+
+        return warmup_models
+
+    def set_warmup_models(self, models: list[str]):
+        """Set models to warm up on server start.
+
+        This sets auto_start=True for specified models and auto_start=False for others.
+
+        Args:
+            models: List of model IDs to warm up
+        """
+        data = self._read_yaml()
+
+        # Set auto_start for all model configs
+        for model_id, config_data in data.items():
+            if isinstance(config_data, dict):
+                data[model_id]["auto_start"] = model_id in models
+
+        # Add entries for models not in config yet
+        for model_id in models:
+            if model_id not in data:
+                data[model_id] = {"auto_start": True}
+
+        self._write_yaml(data)
+        logger.info(f"Set warmup models: {models}")
+
+    def add_warmup_model(self, model_id: str):
+        """Add a model to warmup list by setting auto_start=True.
+
+        Args:
+            model_id: Model identifier
+        """
+        config = self.get_config(model_id)
+
+        if config is None:
+            # Create new config with auto_start=True
+            config = ModelConfig(model_name=model_id, auto_start=True)
+        else:
+            # Update existing config
+            config.auto_start = True
+
+        self.set_config(model_id, config)
+        logger.info(f"Added {model_id} to warmup list (auto_start=True)")
+
+    def remove_warmup_model(self, model_id: str):
+        """Remove a model from warmup list by setting auto_start=False.
+
+        Args:
+            model_id: Model identifier
+        """
+        config = self.get_config(model_id)
+
+        if config is not None:
+            config.auto_start = False
+            self.set_config(model_id, config)
+            logger.info(f"Removed {model_id} from warmup list (auto_start=False)")
+
+    def clear_warmup_models(self):
+        """Clear all models from warmup list by setting auto_start=False for all."""
+        data = self._read_yaml()
+
+        # Set auto_start=False for all models
+        for model_id, config_data in data.items():
+            if isinstance(config_data, dict):
+                data[model_id]["auto_start"] = False
+
+        self._write_yaml(data)
+        logger.info("Cleared warmup models (set auto_start=False for all)")
