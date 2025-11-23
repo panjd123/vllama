@@ -3,6 +3,7 @@
 import logging
 from typing import Optional
 import torch
+import psutil
 
 try:
     import pynvml as nvml
@@ -89,7 +90,7 @@ class GPUMonitor:
             result[i] = self.get_memory_info(i)
         return result
 
-    def get_process_memory_usage(self, pid: int, device_ids: Optional[list[int]] = None) -> int:
+    def get_process_memory_usage(self, pid: int, device_ids: Optional[list[int]] = None) -> dict[int, dict]:
         """Get GPU memory usage for a specific process.
 
         Args:
@@ -105,7 +106,15 @@ class GPUMonitor:
         if device_ids is None:
             device_ids = list(range(self.device_count))
 
-        total_memory = 0
+        gpu_memory = {}
+        
+        children_pids = []
+        try:
+            parent = psutil.Process(pid)
+            children = parent.children(recursive=True)
+            children_pids = [child.pid for child in children]
+        except Exception as e:
+            logger.warning(f"Failed to get child processes for PID {pid}: {e}")
 
         try:
             for device_id in device_ids:
@@ -114,17 +123,22 @@ class GPUMonitor:
 
                 handle = nvml.nvmlDeviceGetHandleByIndex(device_id)
                 processes = nvml.nvmlDeviceGetComputeRunningProcesses(handle)
+                
 
                 for process in processes:
-                    if process.pid == pid:
-                        total_memory += process.usedGpuMemory
+                    if process.pid in ([pid] + children_pids):
+                        gpu_memory[device_id] = {
+                            "usedGpuMemory": process.usedGpuMemory,
+                            "totalGpuMemory": self.get_memory_info(device_id)["total"]
+                        }
                         logger.debug(f"Process {pid} uses {process.usedGpuMemory / (1024**3):.2f}GB on device {device_id}")
+                        break
 
         except Exception as e:
             logger.error(f"Failed to get process memory usage for PID {pid}: {e}")
-            return 0
+            return {}
 
-        return total_memory
+        return gpu_memory
 
     def get_device_with_most_free_memory(self) -> int:
         """Get the device ID with the most free memory.

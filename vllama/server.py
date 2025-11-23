@@ -209,17 +209,18 @@ class VllamaServer:
             instances_data = []
             for model_id, instance in instances.items():
                 # Get GPU memory usage for this process
-                gpu_memory_used = None
+                gpu_memory_info = {}
                 if instance.pid and instance.devices and self.gpu_monitor.get_device_count() > 0:
                     try:
                         # Get process-specific memory usage across all its devices
-                        gpu_memory_used = self.gpu_monitor.get_process_memory_usage(
+                        gpu_memory_info = self.gpu_monitor.get_process_memory_usage(
                             instance.pid,
                             instance.devices
                         )
+                        logger.debug(f"GPU memory used by {model_id} (PID {instance.pid}): {gpu_memory_info}")
                     except Exception as e:
                         logger.debug(f"Failed to get process memory for {model_id}: {e}")
-                        gpu_memory_used = None
+                        gpu_memory_info = None
 
                 instance_dict = {
                     "model_id": model_id,
@@ -231,7 +232,7 @@ class VllamaServer:
                     "last_request_time": instance.last_request_time,
                     "sleep_level": instance.sleep_level,
                     "memory_delta": instance.memory_delta,  # Dict mapping device_id -> memory_bytes
-                    "gpu_memory_used": gpu_memory_used,
+                    "gpu_memory_info": gpu_memory_info,
                 }
                 instances_data.append(instance_dict)
 
