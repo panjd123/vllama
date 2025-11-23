@@ -457,6 +457,10 @@ vllama 基于以下优秀开源项目构建：
 - [FastAPI](https://fastapi.tiangolo.com/) - 现代 Python Web 框架
 - [Typer](https://typer.tiangolo.com/) - 优雅的 CLI 框架
 
+## TODO
+
+- 测试多卡环境（目前仅测试了多卡下分别用单卡）
+
 ## 📄 许可证
 
 MIT License - 自由使用、修改和分发
