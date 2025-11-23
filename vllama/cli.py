@@ -507,11 +507,11 @@ def ps():
             gpu_memory_info = instance.get("gpu_memory_info")
             if gpu_memory_info is not None:
                 for device_id, mem_info in gpu_memory_info.items():
-                    gpu_memory_info = mem_info.get("usedGpuMemory", 0)
+                    gpu_used = mem_info.get("usedGpuMemory", 0)
                     gpu_total = mem_info.get("totalGpuMemory", 0)
-                gpu_used_gb = gpu_memory_info / (1024 ** 3)
+                gpu_used_gb = gpu_used / (1024 ** 3)
                 gpu_total_gb = gpu_total / (1024 ** 3)
-                gpu_percent = (gpu_memory_info / gpu_total * 100) if gpu_total > 0 else 0
+                gpu_percent = (gpu_used / gpu_total * 100) if gpu_total > 0 else 0
                 gpu_memory_str = f"{gpu_used_gb:.1f}/{gpu_total_gb:.1f}GB ({gpu_percent:.0f}%)"
                 gpu_memory_str_list.append(f"GPU{device_id}: {gpu_memory_str}")
             gpu_memory_str = "\n".join(gpu_memory_str_list) if gpu_memory_str_list else "-"
