@@ -505,7 +505,7 @@ def ps():
             # Format GPU memory
             gpu_memory_str_list = []
             gpu_memory_info = instance.get("gpu_memory_info")
-            if gpu_memory_info is not None:
+            if gpu_memory_info:
                 for device_id, mem_info in gpu_memory_info.items():
                     gpu_used = mem_info.get("usedGpuMemory", 0)
                     gpu_total = mem_info.get("totalGpuMemory", 0)
