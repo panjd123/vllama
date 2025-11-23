@@ -125,7 +125,7 @@ class VLLMInstanceManager:
         # Calculate what percentage of total memory is free
         free_ratio = free_memory / total_memory
 
-        optimal = min(0.85, free_ratio * 0.95, (free_memory - 0.5 * 1024**3) / total_memory)
+        optimal = min(0.85, free_ratio * 0.9, (free_memory - 0.5 * 1024**3) / total_memory)
 
         logger.info(
             f"GPU memory: {free_memory / (1024**3):.2f}GB free / "
