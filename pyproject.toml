@@ -23,6 +23,7 @@ dependencies = [
     "accelerate>=1.11.0",
     "huggingface-hub>=0.28.0",
     "flashinfer-python>=0.5.0",
+    "torch-c-dlpack-ext",
 ]
 
 [project.optional-dependencies]
