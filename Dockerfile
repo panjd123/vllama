@@ -1,5 +1,6 @@
 # Use vLLM official image as base
-FROM vllm/vllm-openai:latest
+ARG BASE_TAG=latest
+FROM vllm/vllm-openai:${BASE_TAG}
 
 # Set working directory
 WORKDIR /app
