@@ -875,7 +875,7 @@ def pull(
             local_path = snapshot_download(
                 repo_id=model,
                 revision=revision,
-                cache_dir=hf_home,  # snapshot_download expects HF_HOME, not HF_HOME/hub
+                cache_dir=transformers_cache,
                 local_files_only=False,
             )
 
