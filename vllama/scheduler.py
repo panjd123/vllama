@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from vllama.config import VllamaConfig
 from vllama.state import InstanceStatus
