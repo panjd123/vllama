@@ -89,6 +89,43 @@ class GPUMonitor:
             result[i] = self.get_memory_info(i)
         return result
 
+    def get_process_memory_usage(self, pid: int, device_ids: Optional[list[int]] = None) -> int:
+        """Get GPU memory usage for a specific process.
+
+        Args:
+            pid: Process ID to query
+            device_ids: List of device IDs to check, or None for all devices
+
+        Returns:
+            Total memory used by the process in bytes across all specified devices
+        """
+        if not self._initialized:
+            return 0
+
+        if device_ids is None:
+            device_ids = list(range(self.device_count))
+
+        total_memory = 0
+
+        try:
+            for device_id in device_ids:
+                if device_id >= self.device_count:
+                    continue
+
+                handle = nvml.nvmlDeviceGetHandleByIndex(device_id)
+                processes = nvml.nvmlDeviceGetComputeRunningProcesses(handle)
+
+                for process in processes:
+                    if process.pid == pid:
+                        total_memory += process.usedGpuMemory
+                        logger.debug(f"Process {pid} uses {process.usedGpuMemory / (1024**3):.2f}GB on device {device_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to get process memory usage for PID {pid}: {e}")
+            return 0
+
+        return total_memory
+
     def get_device_with_most_free_memory(self) -> int:
         """Get the device ID with the most free memory.
 

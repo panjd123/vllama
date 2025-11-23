@@ -31,7 +31,7 @@ class InstanceState(BaseModel):
     status: InstanceStatus = InstanceStatus.STOPPED
     last_request_time: float = Field(default_factory=lambda: datetime.now().timestamp())
     start_time: Optional[float] = None
-    memory_delta: Optional[int] = None  # Memory delta in bytes (freed when sleeping)
+    memory_delta: dict[int, int] = Field(default_factory=dict)  # device_id -> memory_bytes (freed when sleeping)
     devices: list[int] = Field(default_factory=list)
     sleep_level: Optional[int] = None
 
@@ -134,12 +134,12 @@ class StateManager:
             self.state.instances[model_id].status = status
             self.state.last_updated = datetime.now().timestamp()
 
-    def update_instance_memory_delta(self, model_id: str, memory_delta: int):
+    def update_instance_memory_delta(self, model_id: str, memory_delta: dict[int, int]):
         """Update the memory delta of an instance.
 
         Args:
             model_id: Model identifier
-            memory_delta: Memory delta in bytes (freed when sleeping)
+            memory_delta: Dictionary mapping device_id to memory bytes (freed when sleeping)
         """
         if model_id in self.state.instances:
             self.state.instances[model_id].memory_delta = memory_delta

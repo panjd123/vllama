@@ -565,11 +565,13 @@ class VLLMInstanceManager:
             # Level 3: completely stop the instance
             return await self.stop_instance(model_id)
 
-        # Record memory usage before sleeping to calculate delta
-        memory_before = 0
+        # Record memory usage before sleeping for each device
+        memory_before: dict[int, int] = {}
         if instance.devices and self.gpu_monitor.get_device_count() > 0:
-            mem_info = self.gpu_monitor.get_memory_info(instance.devices[0])
-            memory_before = mem_info.get("used", 0)
+            for device_id in instance.devices:
+                if device_id < self.gpu_monitor.get_device_count():
+                    mem_info = self.gpu_monitor.get_memory_info(device_id)
+                    memory_before[device_id] = mem_info.get("used", 0)
 
         try:
             client = await self.get_http_client()
@@ -577,15 +579,23 @@ class VLLMInstanceManager:
             response = await client.post(url)
 
             if response.status_code == 200:
-                # Calculate memory delta after sleeping
+                # Calculate memory delta after sleeping for each device
+                memory_delta: dict[int, int] = {}
                 if instance.devices and self.gpu_monitor.get_device_count() > 0:
                     # Wait a bit for memory to be freed
                     await asyncio.sleep(2)
-                    mem_info = self.gpu_monitor.get_memory_info(instance.devices[0])
-                    memory_after = mem_info.get("used", 0)
-                    memory_delta = memory_before - memory_after  # How much was freed
+                    total_freed = 0
+                    for device_id in instance.devices:
+                        if device_id < self.gpu_monitor.get_device_count() and device_id in memory_before:
+                            mem_info = self.gpu_monitor.get_memory_info(device_id)
+                            memory_after = mem_info.get("used", 0)
+                            freed = memory_before[device_id] - memory_after  # How much was freed on this device
+                            memory_delta[device_id] = freed
+                            total_freed += freed
+                            logger.info(f"Device {device_id}: freed {freed / (1024**3):.2f} GB")
+
+                    logger.info(f"Total memory freed across all devices: {total_freed / (1024**3):.2f} GB")
                     instance.memory_delta = memory_delta
-                    logger.info(f"Memory freed: {memory_delta / (1024**3):.2f} GB")
 
                 instance.status = InstanceStatus.SLEEPING_L1 if level == 1 else InstanceStatus.SLEEPING_L2
                 instance.sleep_level = level
@@ -622,14 +632,25 @@ class VLLMInstanceManager:
             logger.warning(f"Instance {model_id} is not sleeping (status: {instance.status})")
             return False
 
-        # Check if enough memory is available for wake up
-        # Only check memory_delta (freed memory when sleeping) needs to be available
+        # Check if enough memory is available for wake up on each device
         if instance.memory_delta and instance.devices and self.gpu_monitor.get_device_count() > 0:
-            has_memory, error_msg = self.gpu_monitor.has_enough_memory(
-                instance.devices, instance.memory_delta
-            )
-            if not has_memory:
-                raise RuntimeError(f"Cannot wake instance: {error_msg}")
+            for device_id in instance.devices:
+                if device_id not in instance.memory_delta:
+                    continue
+
+                required_memory = instance.memory_delta[device_id]
+                if required_memory <= 0:
+                    continue
+
+                # Check if this device has enough free memory
+                has_memory, error_msg = self.gpu_monitor.has_enough_memory(
+                    [device_id], required_memory
+                )
+                if not has_memory:
+                    raise RuntimeError(
+                        f"Cannot wake instance on device {device_id}: {error_msg}. "
+                        f"Need {required_memory / (1024**3):.2f}GB"
+                    )
 
         try:
             client = await self.get_http_client()
@@ -673,13 +694,13 @@ class VLLMInstanceManager:
             logger.error(f"Failed to wake instance {model_id}: {e}")
             return False
 
-    async def evict_models_for_memory(self, required_memory: int, devices: list[int]) -> bool:
+    async def evict_models_for_memory(self, required_memory: dict[int, int], devices: list[int]) -> bool:
         """Evict running models to free up memory.
 
         Evicts models in LRU order (least recently used first) until enough memory is available.
 
         Args:
-            required_memory: Memory needed in bytes
+            required_memory: Dictionary mapping device_id to required memory in bytes
             devices: GPU device IDs that need memory
 
         Returns:
@@ -688,53 +709,108 @@ class VLLMInstanceManager:
         if not devices or self.gpu_monitor.get_device_count() == 0:
             return False
 
-        # Get current free memory
-        mem_info = self.gpu_monitor.get_memory_info(devices[0])
-        free_memory = mem_info.get("free", 0)
+        # Check current free memory for each device
+        device_free_memory: dict[int, int] = {}
+        all_satisfied = True
 
-        logger.info(f"Need {required_memory / (1024**3):.2f}GB, have {free_memory / (1024**3):.2f}GB free")
+        for device_id in devices:
+            if device_id >= self.gpu_monitor.get_device_count():
+                logger.warning(f"Device {device_id} does not exist")
+                continue
 
-        if free_memory >= required_memory:
-            return True  # Already have enough memory
+            mem_info = self.gpu_monitor.get_memory_info(device_id)
+            free_memory = mem_info.get("free", 0)
+            device_free_memory[device_id] = free_memory
 
-        # Get all running instances sorted by last_request_time (oldest first)
+            required = required_memory.get(device_id, 0)
+            logger.info(
+                f"Device {device_id}: need {required / (1024**3):.2f}GB, "
+                f"have {free_memory / (1024**3):.2f}GB free"
+            )
+
+            if free_memory < required:
+                all_satisfied = False
+
+        if all_satisfied:
+            return True  # Already have enough memory on all devices
+
+        # Get all running instances that use any of the target devices
         all_instances = self.state_manager.get_all_instances()
-        running_instances = [
-            (model_id, inst)
-            for model_id, inst in all_instances.items()
-            if inst.status == InstanceStatus.RUNNING and inst.devices and devices[0] in inst.devices
-        ]
+        candidate_instances = []
 
-        if not running_instances:
+        for model_id, inst in all_instances.items():
+            if inst.status != InstanceStatus.RUNNING:
+                continue
+            if not inst.devices:
+                continue
+
+            # Check if this instance uses any of the target devices
+            if any(dev in devices for dev in inst.devices):
+                candidate_instances.append((model_id, inst))
+
+        if not candidate_instances:
             logger.warning("No running instances to evict")
             return False
 
         # Sort by last_request_time (oldest first)
-        running_instances.sort(key=lambda x: x[1].last_request_time)
+        candidate_instances.sort(key=lambda x: x[1].last_request_time)
 
-        logger.info(f"Found {len(running_instances)} running instances to potentially evict")
+        logger.info(f"Found {len(candidate_instances)} running instances to potentially evict")
 
-        # Evict models one by one until we have enough memory
-        for model_id, instance in running_instances:
-            if free_memory >= required_memory:
+        # Evict models one by one until we have enough memory on all devices
+        for model_id, instance in candidate_instances:
+            # Check if all devices now have enough memory
+            all_satisfied = True
+            for device_id in devices:
+                if device_id not in device_free_memory:
+                    continue
+                required = required_memory.get(device_id, 0)
+                if device_free_memory[device_id] < required:
+                    all_satisfied = False
+                    break
+
+            if all_satisfied:
                 break
 
-            logger.info(f"Evicting model {model_id} (last accessed {(datetime.now().timestamp() - instance.last_request_time):.0f}s ago)")
+            logger.info(
+                f"Evicting model {model_id} (last accessed "
+                f"{(datetime.now().timestamp() - instance.last_request_time):.0f}s ago)"
+            )
 
             # Sleep the model (level 2 to free maximum memory while keeping it quickly recoverable)
             success = await self.sleep_instance(model_id, level=2)
 
             if success:
-                # Check new free memory
+                # Update free memory for all devices used by this instance
                 await asyncio.sleep(1)  # Give time for memory to be freed
-                mem_info = self.gpu_monitor.get_memory_info(devices[0])
-                free_memory = mem_info.get("free", 0)
-                logger.info(f"After evicting {model_id}: {free_memory / (1024**3):.2f}GB free")
+
+                for device_id in devices:
+                    if device_id >= self.gpu_monitor.get_device_count():
+                        continue
+                    mem_info = self.gpu_monitor.get_memory_info(device_id)
+                    device_free_memory[device_id] = mem_info.get("free", 0)
+                    logger.info(
+                        f"Device {device_id} after evicting {model_id}: "
+                        f"{device_free_memory[device_id] / (1024**3):.2f}GB free"
+                    )
             else:
                 logger.warning(f"Failed to evict model {model_id}")
 
-        # Final check
-        return free_memory >= required_memory
+        # Final check - verify all devices have enough memory
+        all_satisfied = True
+        for device_id in devices:
+            if device_id not in device_free_memory:
+                continue
+            required = required_memory.get(device_id, 0)
+            if device_free_memory[device_id] < required:
+                all_satisfied = False
+                logger.warning(
+                    f"Device {device_id} still insufficient: "
+                    f"need {required / (1024**3):.2f}GB, "
+                    f"have {device_free_memory[device_id] / (1024**3):.2f}GB"
+                )
+
+        return all_satisfied
 
     async def ensure_instance_running(self, model_info: ModelInfo, auto_evict: bool = True) -> InstanceState:
         """Ensure an instance is running, starting or waking it if necessary.
@@ -755,43 +831,87 @@ class VLLMInstanceManager:
             devices = self._get_default_devices(model_config)
 
             if auto_evict and self.gpu_monitor.get_device_count() > 0:
-                mem_info = self.gpu_monitor.get_memory_info(devices[0])
-                total_memory = mem_info.get("total", 0)
-                free_memory = mem_info.get("free", 0)
+                # Calculate required memory for each device
+                required_memory: dict[int, int] = {}
 
-                # Estimate needed memory: use gpu_memory_utilization setting
-                gpu_util = model_config.gpu_memory_utilization
-                estimated_needed = int(total_memory * gpu_util)
+                for device_id in devices:
+                    if device_id >= self.gpu_monitor.get_device_count():
+                        continue
 
-                logger.info(f"Estimated memory needed: {estimated_needed / (1024**3):.2f}GB, free: {free_memory / (1024**3):.2f}GB")
+                    mem_info = self.gpu_monitor.get_memory_info(device_id)
+                    total_memory = mem_info.get("total", 0)
 
-                if free_memory < estimated_needed:
+                    # Estimate needed memory: use gpu_memory_utilization setting
+                    # For tensor parallel, memory is distributed across GPUs
+                    gpu_util = model_config.gpu_memory_utilization
+                    estimated_needed = int(total_memory * gpu_util / model_config.tensor_parallel_size)
+                    required_memory[device_id] = estimated_needed
+
+                # Check if eviction is needed
+                needs_eviction = False
+                for device_id in devices:
+                    if device_id not in required_memory:
+                        continue
+                    mem_info = self.gpu_monitor.get_memory_info(device_id)
+                    free_memory = mem_info.get("free", 0)
+                    required = required_memory[device_id]
+
+                    logger.info(
+                        f"Device {device_id}: estimated need {required / (1024**3):.2f}GB, "
+                        f"free: {free_memory / (1024**3):.2f}GB"
+                    )
+
+                    if free_memory < required:
+                        needs_eviction = True
+
+                if needs_eviction:
                     logger.info(f"Insufficient memory, attempting to evict models")
-                    evicted = await self.evict_models_for_memory(estimated_needed, devices)
+                    evicted = await self.evict_models_for_memory(required_memory, devices)
                     if not evicted:
+                        required_str = ", ".join(
+                            f"Device {dev}: {mem / (1024**3):.2f}GB"
+                            for dev, mem in required_memory.items()
+                        )
                         raise RuntimeError(
                             f"Cannot start {model_id}: insufficient GPU memory even after eviction. "
-                            f"Need ~{estimated_needed / (1024**3):.2f}GB"
+                            f"Required: {required_str}"
                         )
 
             # Start new instance
             return await self.start_instance(model_info)
 
         elif instance.status in (InstanceStatus.SLEEPING_L1, InstanceStatus.SLEEPING_L2):
-            # Waking up sleeping instance - check memory_delta
+            # Waking up sleeping instance - check memory_delta for each device
             if auto_evict and instance.memory_delta and instance.devices and self.gpu_monitor.get_device_count() > 0:
-                mem_info = self.gpu_monitor.get_memory_info(instance.devices[0])
-                free_memory = mem_info.get("free", 0)
+                # Check each device
+                needs_eviction = False
+                for device_id in instance.devices:
+                    if device_id not in instance.memory_delta:
+                        continue
 
-                logger.info(f"Memory delta: {instance.memory_delta / (1024**3):.2f}GB, free: {free_memory / (1024**3):.2f}GB")
+                    mem_info = self.gpu_monitor.get_memory_info(device_id)
+                    free_memory = mem_info.get("free", 0)
+                    required = instance.memory_delta[device_id]
 
-                if free_memory < instance.memory_delta:
+                    logger.info(
+                        f"Device {device_id}: memory delta {required / (1024**3):.2f}GB, "
+                        f"free: {free_memory / (1024**3):.2f}GB"
+                    )
+
+                    if free_memory < required:
+                        needs_eviction = True
+
+                if needs_eviction:
                     logger.info(f"Insufficient memory to wake {model_id}, attempting to evict models")
                     evicted = await self.evict_models_for_memory(instance.memory_delta, instance.devices)
                     if not evicted:
+                        required_str = ", ".join(
+                            f"Device {dev}: {mem / (1024**3):.2f}GB"
+                            for dev, mem in instance.memory_delta.items()
+                        )
                         raise RuntimeError(
                             f"Cannot wake {model_id}: insufficient GPU memory even after eviction. "
-                            f"Need {instance.memory_delta / (1024**3):.2f}GB"
+                            f"Required: {required_str}"
                         )
 
             # Wake up sleeping instance

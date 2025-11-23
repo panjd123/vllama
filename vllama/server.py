@@ -208,18 +208,18 @@ class VllamaServer:
             # Convert instances to API-friendly format
             instances_data = []
             for model_id, instance in instances.items():
-                # Get GPU memory usage for this instance
+                # Get GPU memory usage for this process
                 gpu_memory_used = None
-                gpu_memory_total = None
-                if instance.devices and self.gpu_monitor.get_device_count() > 0:
-                    # Get memory info for the first device
-                    device_id = instance.devices[0]
+                if instance.pid and instance.devices and self.gpu_monitor.get_device_count() > 0:
                     try:
-                        mem_info = self.gpu_monitor.get_memory_info(device_id)
-                        gpu_memory_used = mem_info.get("used", 0)
-                        gpu_memory_total = mem_info.get("total", 0)
-                    except Exception:
-                        pass
+                        # Get process-specific memory usage across all its devices
+                        gpu_memory_used = self.gpu_monitor.get_process_memory_usage(
+                            instance.pid,
+                            instance.devices
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to get process memory for {model_id}: {e}")
+                        gpu_memory_used = None
 
                 instance_dict = {
                     "model_id": model_id,
@@ -230,9 +230,8 @@ class VllamaServer:
                     "start_time": instance.start_time,
                     "last_request_time": instance.last_request_time,
                     "sleep_level": instance.sleep_level,
-                    "memory_delta": instance.memory_delta,
+                    "memory_delta": instance.memory_delta,  # Dict mapping device_id -> memory_bytes
                     "gpu_memory_used": gpu_memory_used,
-                    "gpu_memory_total": gpu_memory_total,
                 }
                 instances_data.append(instance_dict)
 
