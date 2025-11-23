@@ -125,23 +125,7 @@ class VLLMInstanceManager:
         # Calculate what percentage of total memory is free
         free_ratio = free_memory / total_memory
 
-        # Use aggressive utilization to maximize available memory for vLLM
-        # vLLM will automatically reduce max_model_len if KV cache doesn't fit
-        if free_ratio >= 0.92:
-            optimal = 0.90  # Plenty of free memory
-        elif free_ratio >= 0.87:
-            optimal = 0.85  # Decent amount free
-        elif free_ratio >= 0.77:
-            optimal = 0.75  # Limited free memory
-        elif free_ratio >= 0.62:
-            optimal = 0.60  # Low free memory
-        elif free_ratio >= 0.47:
-            optimal = 0.45  # Very low free memory
-        elif free_ratio >= 0.37:
-            optimal = 0.35  # Critically low free memory
-        else:
-            # Very limited free memory, use most of what's free with minimal buffer
-            optimal = max(0.50, min(0.85, free_ratio * 0.95))
+        optimal = min(0.85, free_ratio * 0.95, (free_memory - 0.5 * 1024**3) / total_memory)
 
         logger.info(
             f"GPU memory: {free_memory / (1024**3):.2f}GB free / "

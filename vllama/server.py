@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import signal
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -34,7 +35,6 @@ class VllamaServer:
             config: Global vllama configuration
         """
         self.config = config
-        self.app = FastAPI(title="vllama", version="0.1.0")
 
         # Ensure directories exist
         VllamaPaths.ensure_directories()
@@ -47,21 +47,50 @@ class VllamaServer:
         )
         self.scheduler = UnloadScheduler(config, self.instance_manager)
 
-        # Scan available models
-        self.models: list[ModelInfo] = scan_transformers_cache(config.transformers_cache)
-        logger.info(f"Found {len(self.models)} models in cache")
-
         # GPU monitor for memory info
         self.gpu_monitor = get_gpu_monitor()
-
-        # Setup routes
-        self._setup_routes()
 
         # HTTP client for forwarding
         self._http_client: Optional[httpx.AsyncClient] = None
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
+
+        # Create lifespan context manager
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            """Lifespan event handler for startup and shutdown."""
+            # Startup
+            self._write_pid_file()
+            await self.scheduler.start()
+            logger.info("Vllama server started")
+            await self._auto_warmup_models()
+
+            yield
+
+            # Shutdown
+            logger.info("Shutting down vllama server...")
+            await self.scheduler.stop()
+            await self.instance_manager.cleanup_all_instances()
+            if self._http_client:
+                await self._http_client.aclose()
+            self._remove_pid_file()
+            logger.info("Vllama server shutdown complete")
+
+        self.app = FastAPI(title="vllama", version="0.1.0", lifespan=lifespan)
+
+        # Setup routes
+        self._setup_routes()
+
+    def _get_available_models(self) -> list[ModelInfo]:
+        """Get available models by scanning transformers cache in real-time.
+
+        Returns:
+            List of available models
+        """
+        models = scan_transformers_cache(self.config.transformers_cache)
+        logger.debug(f"Scanned {len(models)} models from cache")
+        return models
 
     def _get_pid_file_path(self) -> str:
         """Get the path to the PID file.
@@ -133,11 +162,14 @@ class VllamaServer:
 
         logger.info(f"Auto-warming up {len(warmup_models)} model(s): {warmup_models}")
 
+        # Get available models in real-time
+        available_models = self._get_available_models()
+
         # Use asyncio.gather to warm up models in parallel
         tasks = []
         for model_name in warmup_models:
             # Find model in cache
-            model_info = find_model_by_name(self.models, model_name)
+            model_info = find_model_by_name(available_models, model_name)
             if model_info:
                 await self._warmup_single_model(model_info)
             else:
@@ -162,39 +194,6 @@ class VllamaServer:
 
     def _setup_routes(self):
         """Setup FastAPI routes."""
-
-        @self.app.on_event("startup")
-        async def startup():
-            """Startup event handler."""
-            # Write PID file
-            self._write_pid_file()
-
-            # Start scheduler
-            await self.scheduler.start()
-            logger.info("Vllama server started")
-
-            # Auto warm-up models if configured
-            await self._auto_warmup_models()
-
-        @self.app.on_event("shutdown")
-        async def shutdown():
-            """Shutdown event handler."""
-            logger.info("Shutting down vllama server...")
-
-            # Stop scheduler
-            await self.scheduler.stop()
-
-            # Cleanup all vLLM instances
-            await self.instance_manager.cleanup_all_instances()
-
-            # Close HTTP client
-            if self._http_client:
-                await self._http_client.aclose()
-
-            # Remove PID file
-            self._remove_pid_file()
-
-            logger.info("Vllama server shutdown complete")
 
         @self.app.get("/health")
         async def health():
@@ -242,8 +241,11 @@ class VllamaServer:
         @self.app.post("/instances/{model_name:path}/start")
         async def start_model(model_name: str):
             """Start or wake up a model instance."""
+            # Get available models in real-time
+            available_models = self._get_available_models()
+
             # Find model
-            model_info = find_model_by_name(self.models, model_name)
+            model_info = find_model_by_name(available_models, model_name)
 
             if not model_info:
                 raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
@@ -264,8 +266,11 @@ class VllamaServer:
         @self.app.post("/instances/{model_name:path}/sleep")
         async def sleep_model(model_name: str, level: int = 2):
             """Put a model instance to sleep."""
+            # Get available models in real-time
+            available_models = self._get_available_models()
+
             # Find model
-            model_info = find_model_by_name(self.models, model_name)
+            model_info = find_model_by_name(available_models, model_name)
 
             if not model_info:
                 raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
@@ -282,8 +287,11 @@ class VllamaServer:
         @self.app.post("/instances/{model_name:path}/stop")
         async def stop_model(model_name: str):
             """Stop a model instance."""
+            # Get available models in real-time
+            available_models = self._get_available_models()
+
             # Find model
-            model_info = find_model_by_name(self.models, model_name)
+            model_info = find_model_by_name(available_models, model_name)
 
             if not model_info:
                 raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
@@ -300,7 +308,9 @@ class VllamaServer:
         @self.app.get("/v1/models")
         async def list_models():
             """List all available models."""
-            model_list = get_model_list_for_api(self.models)
+            # Get available models in real-time
+            available_models = self._get_available_models()
+            model_list = get_model_list_for_api(available_models)
 
             # Update model availability based on sleep status
             instances = self.instance_manager.get_all_instances()
@@ -370,8 +380,11 @@ class VllamaServer:
         if not model_name:
             raise HTTPException(status_code=400, detail="Model name required in request body")
 
+        # Get available models in real-time
+        available_models = self._get_available_models()
+
         # Find model
-        model_info = find_model_by_name(self.models, model_name)
+        model_info = find_model_by_name(available_models, model_name)
         if not model_info:
             raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
 
