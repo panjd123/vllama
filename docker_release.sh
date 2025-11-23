@@ -3,7 +3,7 @@
 IMAGE_NAME="panjd123/vllama"
 
 VERSIONS=(
-  v0.8.5  # cuda12.4
+  v0.8.5.post1  # cuda12.4
   v0.11.0 # cuda12.8
   latest  # cuda12.9
 )
