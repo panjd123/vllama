@@ -876,7 +876,6 @@ def pull(
                 repo_id=model,
                 revision=revision,
                 cache_dir=hf_home,  # snapshot_download expects HF_HOME, not HF_HOME/hub
-                resume_download=True,
                 local_files_only=False,
             )
 
