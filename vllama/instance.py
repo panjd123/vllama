@@ -582,8 +582,6 @@ class VLLMInstanceManager:
                 # Calculate memory delta after sleeping for each device
                 memory_delta: dict[int, int] = {}
                 if instance.devices and self.gpu_monitor.get_device_count() > 0:
-                    # Wait a bit for memory to be freed
-                    await asyncio.sleep(2)
                     total_freed = 0
                     for device_id in instance.devices:
                         if device_id < self.gpu_monitor.get_device_count() and device_id in memory_before:
