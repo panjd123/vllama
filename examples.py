@@ -50,7 +50,7 @@ def example_embeddings():
     print("\n=== Embeddings Example ===")
 
     response = client.embeddings.create(
-        model="BAAI/bge-m3",
+        model="Qwen/Qwen3-Embedding-0.6B",
         input=["Hello, world!", "How are you?"],
     )
 
@@ -69,6 +69,29 @@ def example_list_models():
     for model in models.data:
         print(f"  - {model.id}")
 
+def example_concurrent_requests(model_id: str):
+    """Example: Making concurrent requests to the server."""
+    import threading
+
+    print("\n=== Concurrent Requests Example ===")
+
+    def make_request(i):
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "user", "content": f"What is {i} + {i}?"}
+            ],
+        )
+        print(f"Response to request {i}: {response.choices[0].message.content}")
+
+    threads = []
+    for i in range(5):
+        t = threading.Thread(target=make_request, args=(i,))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
 
 if __name__ == "__main__":
     print("vllama Examples")
@@ -86,6 +109,9 @@ if __name__ == "__main__":
         example_chat()
         example_chat_streaming()
         example_embeddings()
+
+        example_concurrent_requests("Qwen/Qwen3-0.6B")
+        example_concurrent_requests("Qwen/Qwen3-VL-2B-Instruct")
 
     except Exception as e:
         print(f"\nError: {e}")
