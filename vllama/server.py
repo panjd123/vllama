@@ -53,6 +53,9 @@ class VllamaServer:
         # HTTP client for forwarding
         self._http_client: Optional[httpx.AsyncClient] = None
 
+        # Model list cache (for offline mode)
+        self._models_cache: Optional[list[ModelInfo]] = None
+
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
 
@@ -83,14 +86,41 @@ class VllamaServer:
         self._setup_routes()
 
     def _get_available_models(self) -> list[ModelInfo]:
-        """Get available models by scanning transformers cache in real-time.
+        """Get available models by scanning transformers cache.
+
+        If offline_mode is enabled, cache the model list after first scan.
+        Otherwise, scan from disk every time.
 
         Returns:
             List of available models
         """
+        # If offline mode is enabled and we have a cache, return it
+        if self.config.offline_mode and self._models_cache is not None:
+            logger.debug(f"Returning cached model list ({len(self._models_cache)} models)")
+            return self._models_cache
+
+        # Scan from disk
         models = scan_transformers_cache(self.config.transformers_cache)
         logger.debug(f"Scanned {len(models)} models from cache")
+
+        # If offline mode is enabled, cache the result
+        if self.config.offline_mode:
+            self._models_cache = models
+            logger.info(f"Cached {len(models)} models (offline mode enabled)")
+
         return models
+
+    def reload_models(self) -> int:
+        """Clear the models cache and rescan from disk.
+
+        Returns:
+            Number of models found after reload
+        """
+        logger.info("Reloading model list from disk...")
+        self._models_cache = None
+        models = self._get_available_models()
+        logger.info(f"Reloaded {len(models)} models")
+        return len(models)
 
     def _get_pid_file_path(self) -> str:
         """Get the path to the PID file.
@@ -199,6 +229,23 @@ class VllamaServer:
         async def health():
             """Health check endpoint."""
             return {"status": "ok"}
+
+        @self.app.post("/reload")
+        async def reload_models():
+            """Reload model list from disk.
+
+            This clears the model cache (if offline_mode is enabled) and rescans
+            the transformers cache directory for available models.
+
+            Returns:
+                Number of models found after reload
+            """
+            count = self.reload_models()
+            return {
+                "status": "success",
+                "models_count": count,
+                "offline_mode": self.config.offline_mode
+            }
 
         @self.app.get("/instances")
         async def list_instances():

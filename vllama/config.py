@@ -40,6 +40,7 @@ class VllamaConfig(BaseSettings):
         VLLAMA_UNLOAD_TIMEOUT: Seconds of inactivity before unloading (default: 1800)
         VLLAMA_UNLOAD_MODE: Unload mode 1/2/3 (default: 2)
         VLLAMA_DEFAULT_DEVICE: Default GPU device ID (default: auto-select by max total memory)
+        VLLAMA_OFFLINE_MODE: Cache model list after first scan (default: False)
         HF_HOME: Hugging Face home directory (uses $HF_HOME/hub for model cache)
     """
 
@@ -67,6 +68,9 @@ class VllamaConfig(BaseSettings):
 
     # Default GPU device (configurable via environment variables)
     default_device: Optional[int] = Field(default=None, description="Default GPU device ID, None for auto-select by max total memory")
+
+    # Model list caching (configurable via environment variables)
+    offline_mode: bool = Field(default=False, description="Cache model list after first scan (offline mode)")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

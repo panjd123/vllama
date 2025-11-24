@@ -97,6 +97,33 @@ def ensure_server_running() -> int:
     return port
 
 
+def auto_reload_if_server_running(silent: bool = False):
+    """Automatically reload model list if server is running.
+
+    Args:
+        silent: If True, don't print any messages
+    """
+    is_running, port = check_server_running()
+    if not is_running:
+        return
+
+    try:
+        response = httpx.post(
+            f"http://localhost:{port}/reload",
+            timeout=10.0
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if not silent:
+                console.print(f"[green]✓[/green] Server model list reloaded ({data['models_count']} models)")
+        else:
+            if not silent:
+                console.print(f"[yellow]⚠[/yellow] Failed to reload server model list")
+    except Exception:
+        # Silently ignore reload errors
+        pass
+
+
 def format_time_ago(timestamp: float) -> str:
     """Format a timestamp as human-readable time ago.
 
@@ -339,6 +366,44 @@ def restart(model: str = typer.Argument(..., help="Model name to restart")):
 
     except httpx.TimeoutException:
         console.print("[red]Failed to restart model: timed out[/red]")
+        raise typer.Exit(1)
+    except httpx.ConnectError:
+        console.print("[red]Failed to connect to vllama server[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def reload():
+    """Reload the model list from disk.
+
+    This command forces the server to rescan the transformers cache directory
+    for available models. Useful when new models are added after the server
+    started, especially when offline_mode is enabled.
+
+    Examples:
+        vllama reload
+    """
+    server_port = ensure_server_running()
+
+    console.print("Reloading model list from disk...")
+
+    try:
+        response = httpx.post(
+            f"http://localhost:{server_port}/reload",
+            timeout=30.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            console.print(f"[green]Successfully reloaded model list[/green]")
+            console.print(f"Models found: {data['models_count']}")
+            console.print(f"Offline mode: {'enabled' if data['offline_mode'] else 'disabled'}")
+        else:
+            console.print(f"[red]Failed to reload: {response.text}[/red]")
+            raise typer.Exit(1)
+
+    except httpx.TimeoutException:
+        console.print("[red]Failed to reload: timed out[/red]")
         raise typer.Exit(1)
     except httpx.ConnectError:
         console.print("[red]Failed to connect to vllama server[/red]")
@@ -885,6 +950,11 @@ def pull(
 
         console.print(f"[green]✓[/green] Successfully downloaded {model}")
         console.print(f"[cyan]Local path: {local_path}[/cyan]")
+        console.print()
+
+        # Auto-reload server model list if running
+        auto_reload_if_server_running()
+
         console.print()
         console.print("You can now use this model with:")
         console.print(f"  vllama start {model}")
