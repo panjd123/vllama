@@ -822,7 +822,6 @@ class VLLMInstanceManager:
             Instance state
         """
         async with self.start_lock:
-            print("???")
             model_id = model_info.model_id
             instance = self.state_manager.get_instance(model_id)
 
