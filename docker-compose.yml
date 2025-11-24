@@ -17,6 +17,9 @@ services:
 
     # Environment variables for configuration
     environment:
+      # Offline mode - cache model list after first scan (production recommended)
+      - VLLAMA_OFFLINE_MODE=true
+
       # Vllama server configuration
       - VLLAMA_HOST=0.0.0.0
       - VLLAMA_PORT=33258
