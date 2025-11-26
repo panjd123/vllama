@@ -39,6 +39,9 @@ def setup_file_logging(
 ) -> Path:
     """Setup file logging with rotation.
 
+    Only logs from vllama modules are written to file.
+    Third-party library logs (httpcore, httpx, etc.) are excluded.
+
     Args:
         log_level: Log level for file output (default: debug)
         max_bytes: Maximum size of each log file in bytes (default: 10MB)
@@ -68,12 +71,11 @@ def setup_file_logging(
     )
     file_handler.setFormatter(file_formatter)
 
-    # Add file handler to root logger
-    root_logger = logging.getLogger()
-    root_logger.addHandler(file_handler)
-
-    # Set root logger to DEBUG to allow file handler to capture all logs
-    root_logger.setLevel(logging.DEBUG)
+    # Add file handler only to vllama logger (not root logger)
+    # This ensures only vllama logs are written, not third-party libs
+    vllama_logger = logging.getLogger("vllama")
+    vllama_logger.addHandler(file_handler)
+    vllama_logger.setLevel(file_level)
 
     return log_file
 
