@@ -2,6 +2,7 @@
 
 import json
 import logging
+import logging.handlers
 import os
 import time
 from datetime import datetime
@@ -23,12 +24,58 @@ from vllama.models import find_model_by_name, scan_transformers_cache
 from vllama.server import create_app
 from vllama.yaml_manager import YAMLConfigManager
 
-# Setup logging
+# Setup basic logging (console only, INFO level)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def setup_file_logging(
+    log_level: str = "debug",
+    max_bytes: int = 10 * 1024 * 1024,  # 10MB
+    backup_count: int = 5,
+) -> Path:
+    """Setup file logging with rotation.
+
+    Args:
+        log_level: Log level for file output (default: debug)
+        max_bytes: Maximum size of each log file in bytes (default: 10MB)
+        backup_count: Number of backup files to keep (default: 5)
+
+    Returns:
+        Path to the log file
+    """
+    VllamaPaths.ensure_directories()
+    log_file = VllamaPaths.LOGS_DIR / "vllama.log"
+
+    # Create rotating file handler
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+
+    # Set file handler level
+    file_level = getattr(logging, log_level.upper(), logging.DEBUG)
+    file_handler.setLevel(file_level)
+
+    # Set format for file handler
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
+
+    # Add file handler to root logger
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+
+    # Set root logger to DEBUG to allow file handler to capture all logs
+    root_logger.setLevel(logging.DEBUG)
+
+    return log_file
 
 app = typer.Typer(name="vllama", help="A vllm management tool with Ollama-like interface")
 console = Console()
@@ -166,7 +213,10 @@ def format_time_ago(timestamp: float) -> str:
 def serve(
     host: Optional[str] = typer.Option(None, "--host", help="Host to bind to (default: 0.0.0.0)"),
     port: Optional[int] = typer.Option(None, "--port", help="Port to bind to (default: 33258)"),
-    log_level: str = typer.Option("info", "--log-level", help="Log level"),
+    log_level: str = typer.Option("info", "--log-level", help="Console log level"),
+    file_log_level: str = typer.Option("debug", "--file-log-level", help="File log level (default: debug)"),
+    log_max_size: int = typer.Option(10, "--log-max-size", help="Max log file size in MB (default: 10)"),
+    log_backup_count: int = typer.Option(5, "--log-backup-count", help="Number of backup log files (default: 5)"),
 ):
     """Start vllama server.
 
@@ -175,6 +225,13 @@ def serve(
     2. Environment variables (VLLAMA_HOST, VLLAMA_PORT, etc.)
     3. Default values
     """
+    # Setup file logging with rotation
+    log_file = setup_file_logging(
+        log_level=file_log_level,
+        max_bytes=log_max_size * 1024 * 1024,
+        backup_count=log_backup_count,
+    )
+
     # Build config kwargs only from explicitly provided arguments
     config_kwargs = {}
     if host is not None:
@@ -188,6 +245,7 @@ def serve(
     console.print(f"[green]Starting vllama server on {config.host}:{config.port}[/green]")
     console.print(f"[cyan]Config directory: {VllamaPaths.CONFIG_DIR}[/cyan]")
     console.print(f"[cyan]Models cache: {config.transformers_cache}[/cyan]")
+    console.print(f"[cyan]Log file: {log_file} (level: {file_log_level}, max: {log_max_size}MB, backups: {log_backup_count})[/cyan]")
 
     # Create FastAPI app
     fastapi_app = create_app(config)
