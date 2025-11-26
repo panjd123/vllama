@@ -309,9 +309,8 @@ class VLLMInstanceManager:
 
         # Calculate GPU memory utilization (same logic as in _build_vllm_command)
         gpu_memory_util = model_config.gpu_memory_utilization
-        if not self.yaml_manager.has_config(model_info.model_id):
-            gpu_memory_util = self._calculate_optimal_memory_utilization(devices, gpu_memory_util)
-            logger.info(f"Auto-calculated GPU memory utilization: {gpu_memory_util:.2f}")
+        gpu_memory_util = self._calculate_optimal_memory_utilization(devices, gpu_memory_util)
+        logger.info(f"Auto-calculated GPU memory utilization: {gpu_memory_util:.2f}")
 
         # Pre-check memory requirements before starting
         self._check_memory_requirements(model_info, model_config, devices, gpu_memory_util)
