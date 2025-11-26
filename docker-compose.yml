@@ -6,6 +6,8 @@ services:
     image: panjd123/vllama:latest
     container_name: vllama
 
+    shm_size: 16g  # Increase shared memory size for large models
+
     # GPU support - requires nvidia-docker
     deploy:
       resources:
@@ -65,7 +67,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-    # Resource limits (optional, adjust based on your hardware)
-    # mem_limit: 32g
-    # shm_size: 16g
