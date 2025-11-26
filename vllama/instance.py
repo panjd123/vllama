@@ -103,7 +103,7 @@ class VLLMInstanceManager:
         # Fallback to device 0
         return [0]
 
-    def _calculate_optimal_memory_utilization(self, devices: list[int]) -> float:
+    def _calculate_optimal_memory_utilization(self, devices: list[int], request_memory_utilization: float=None) -> float:
         """Calculate optimal GPU memory utilization based on available memory.
 
         Args:
@@ -126,7 +126,7 @@ class VLLMInstanceManager:
         # Calculate what percentage of total memory is free
         free_ratio = free_memory / total_memory
 
-        optimal = min(0.85, free_ratio * 0.9, (free_memory - 0.5 * 1024**3) / total_memory)
+        optimal = min(request_memory_utilization or 0.85, free_ratio * 0.9, (free_memory - 0.5 * 1024**3) / total_memory)
 
         logger.info(
             f"GPU memory: {free_memory / (1024**3):.2f}GB free / "
@@ -310,7 +310,7 @@ class VLLMInstanceManager:
         # Calculate GPU memory utilization (same logic as in _build_vllm_command)
         gpu_memory_util = model_config.gpu_memory_utilization
         if not self.yaml_manager.has_config(model_info.model_id):
-            gpu_memory_util = self._calculate_optimal_memory_utilization(devices)
+            gpu_memory_util = self._calculate_optimal_memory_utilization(devices, gpu_memory_util)
             logger.info(f"Auto-calculated GPU memory utilization: {gpu_memory_util:.2f}")
 
         # Pre-check memory requirements before starting

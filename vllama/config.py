@@ -15,7 +15,7 @@ class ModelConfig(BaseModel):
 
     model_name: str
     port: Optional[int] = None  # Auto-assign if not specified
-    gpu_memory_utilization: float = Field(default=0.7, ge=0.1, le=1.0)
+    gpu_memory_utilization: float = Field(default=0.85, ge=0.1, le=1.0)
     devices: Optional[list[int]] = None  # GPU device IDs, None for auto
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = 2048
